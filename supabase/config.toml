@@ -1,0 +1,23 @@
+[functions.fivesim-proxy]
+verify_jwt = true
+
+[functions.flutterwave-config]
+verify_jwt = true
+
+[functions.flutterwave-initiate]
+verify_jwt = true
+
+[functions.flutterwave-verify]
+verify_jwt = true
+
+[functions.flutterwave-webhook]
+verify_jwt = false
+
+[functions.send-otp]
+verify_jwt = false
+
+[functions.support-agent]
+verify_jwt = true
+
+[functions.order-watcher]
+verify_jwt = false

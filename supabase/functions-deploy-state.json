@@ -1,0 +1,37 @@
+{
+  "projectId": "68886124",
+  "functions": {
+    "fivesim-proxy": {
+      "hasChanged": false,
+      "hash": "62fe41be25144f666e2eedd886d711d81b6d5df6bb80e604b37a0b5414c5535e"
+    },
+    "flutterwave-config": {
+      "hasChanged": false,
+      "hash": "98fabcc9081496ef9a852218723ff6aa65b8e0eab3a429980420c1a612746388"
+    },
+    "flutterwave-initiate": {
+      "hasChanged": false,
+      "hash": "4c4acb283014e1bc9ac82da75871b5a9d0ad54d63a278f3e820f9649d89a0030"
+    },
+    "flutterwave-verify": {
+      "hasChanged": false,
+      "hash": "02c13e3b4534da14dba754736f723f2dbc4d93e25e489898b0a3596908070fa3"
+    },
+    "flutterwave-webhook": {
+      "hasChanged": false,
+      "hash": "22f708f8ba796c693484a5bf468047c1369b92ddf6d6466b7f467a27c867c8b3"
+    },
+    "order-watcher": {
+      "hasChanged": false,
+      "hash": "6c7c1037ae116f49c5b18b76214a70b932b96ac17716a27530c07ebadae28d73"
+    },
+    "send-otp": {
+      "hasChanged": false,
+      "hash": "5a56a917f114c632342065d9404e0213a3e59f5e3412c1b5e9286298088200b0"
+    },
+    "support-agent": {
+      "hasChanged": false,
+      "hash": "856e8e3e68688f7ba7cb75ca379fdb7c5111b511fae760b0f8bd2e81b2c0f3dc"
+    }
+  }
+}
