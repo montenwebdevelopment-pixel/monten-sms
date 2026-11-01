@@ -1,0 +1,127 @@
+name: Android Play Store Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify required GitHub secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          node --input-type=module <<'NODE'
+          const required = [
+            "VITE_SUPABASE_URL",
+            "VITE_SUPABASE_ANON_KEY",
+            "ANDROID_KEYSTORE_BASE64",
+            "ANDROID_KEYSTORE_PASSWORD",
+            "ANDROID_KEY_ALIAS",
+            "ANDROID_KEY_PASSWORD",
+          ];
+          const missing = required.filter((name) => !process.env[name]);
+          if (missing.length) {
+            throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
+          }
+          try {
+            new URL(process.env.VITE_SUPABASE_URL);
+          } catch {
+            throw new Error("VITE_SUPABASE_URL is not a valid URL");
+          }
+          NODE
+
+      - name: Build web assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/montensms-upload.jks
+        run: |
+          set +x
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          test -s "$ANDROID_KEYSTORE_PATH"
+
+      - name: Build signed release AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/montensms-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease
+
+      - name: Verify AAB exists and signature is valid
+        env:
+          AAB_PATH: android/app/build/outputs/bundle/release/app-release.aab
+        run: |
+          set +x
+          test -s "$AAB_PATH"
+          verification_log="$RUNNER_TEMP/aab-signature-verification.log"
+          if ! jarsigner -verify "$AAB_PATH" > "$verification_log" 2>&1; then
+            echo "AAB signature verification failed."
+            exit 1
+          fi
+          if ! grep -Fq "jar verified." "$verification_log"; then
+            echo "AAB does not contain a verified signature."
+            exit 1
+          fi
+          echo "AAB exists, is non-empty, and has a verified signature."
+
+      - name: Upload signed Play Store AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: montensms-play-store-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Remove temporary signing files
+        if: always()
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/montensms-upload.jks
+        run: |
+          rm -f "$ANDROID_KEYSTORE_PATH" "$RUNNER_TEMP/aab-signature-verification.log"

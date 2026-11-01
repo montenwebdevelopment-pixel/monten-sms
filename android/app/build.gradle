@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def releaseSigningEnvironment = [
+    'ANDROID_KEYSTORE_PATH': System.getenv('ANDROID_KEYSTORE_PATH'),
+    'ANDROID_KEYSTORE_PASSWORD': System.getenv('ANDROID_KEYSTORE_PASSWORD'),
+    'ANDROID_KEY_ALIAS': System.getenv('ANDROID_KEY_ALIAS'),
+    'ANDROID_KEY_PASSWORD': System.getenv('ANDROID_KEY_PASSWORD'),
+]
+def releaseSigningConfigured = releaseSigningEnvironment.values().every { it?.trim() }
+
 android {
     namespace = "com.montensms.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,11 +24,46 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(releaseSigningEnvironment['ANDROID_KEYSTORE_PATH'])
+                storePassword releaseSigningEnvironment['ANDROID_KEYSTORE_PASSWORD']
+                keyAlias releaseSigningEnvironment['ANDROID_KEY_ALIAS']
+                keyPassword releaseSigningEnvironment['ANDROID_KEY_PASSWORD']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+}
+
+tasks.register('verifyReleaseSigning') {
+    doLast {
+        def missing = releaseSigningEnvironment.findAll { name, value -> !value?.trim() }.keySet()
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                "Release signing requires these environment variables: ${missing.join(', ')}"
+            )
+        }
+
+        def keystore = new File(releaseSigningEnvironment['ANDROID_KEYSTORE_PATH'])
+        if (!keystore.isAbsolute() || !keystore.isFile()) {
+            throw new GradleException('ANDROID_KEYSTORE_PATH must point to an existing keystore using an absolute path.')
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name in ['assembleRelease', 'bundleRelease']) {
+        task.dependsOn(tasks.named('verifyReleaseSigning'))
     }
 }
 
