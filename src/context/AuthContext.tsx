@@ -32,16 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        if (!mounted) return;
-        setSession(session);
-        if (!session) setLoading(false);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to restore the authentication session.", error);
-        if (mounted) setLoading(false);
-      });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      setSession(session);
+      if (!session) setLoading(false);
+    }).catch((error: unknown) => {
+      console.error("Failed to restore the authentication session.", error);
+      if (mounted) setLoading(false);
+    });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
@@ -50,20 +48,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setLoading(false);
       } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        void Promise.resolve(supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle())
-          .then(({ data, error }) => {
-            if (mounted && !error && data) setProfile(data as Profile);
-          })
-          .catch((error: unknown) => {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .maybeSingle();
+            if (mounted && !error && data) {
+              setProfile(data as Profile);
+            }
+          } catch (error) {
             console.error("Failed to load the user profile.", error);
-          })
-          .finally(() => {
+          } finally {
             if (mounted) setLoading(false);
-          });
+          }
+        })();
       }
     });
 
@@ -74,13 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
     if (session?.user?.id) {
       void refreshProfile()
         .catch((error: unknown) => {
           console.error("Failed to refresh the user profile.", error);
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
     }
+    return () => {
+      mounted = false;
+    };
   }, [session, refreshProfile]);
 
   const signOut = async () => {

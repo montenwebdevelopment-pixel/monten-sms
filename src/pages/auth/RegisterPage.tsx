@@ -107,6 +107,9 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
               </button>
             </div>
             <Input label="Confirm Password" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={setConfirmPassword} placeholder="Re-enter password" icon={<Lock className="w-4 h-4" />} required />
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="text-xs text-slate-600">New accounts start with a wallet balance of <span className="font-semibold text-navy-900">₦0</span>. Fund your wallet after registration to start buying numbers.</p>
+            </div>
             <Button type="submit" className="w-full" loading={loading} disabled={loading}>
               {loading ? "Creating account..." : "Create Account"}{!loading && <ArrowRight className="w-4 h-4" />}
             </Button>

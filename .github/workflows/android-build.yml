@@ -1,7 +1,6 @@
 name: Android Build
 
 on:
-  workflow_dispatch:
   push:
     branches: [ "main" ]
   pull_request:
@@ -94,8 +93,8 @@ jobs:
           const config = JSON.parse(
             readFileSync("android/app/src/main/assets/capacitor.config.json", "utf8"),
           );
-          if (config.android?.webContentsDebuggingEnabled !== true) {
-            throw new Error("Android WebView debugging is not enabled");
+          if (config.android?.webContentsDebuggingEnabled !== false) {
+            throw new Error("Android WebView debugging must remain disabled");
           }
 
           console.log(`Verified ${references.length} Android WebView bundle assets`);
