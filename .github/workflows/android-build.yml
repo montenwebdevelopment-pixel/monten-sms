@@ -33,10 +33,12 @@ jobs:
           node --input-type=module <<'NODE'
           const url = process.env.VITE_SUPABASE_URL;
           const key = process.env.VITE_SUPABASE_ANON_KEY;
-          if (!url || !key) {
-            throw new Error(
-              "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY GitHub Actions secret",
-            );
+          const missing = [
+            !url && "VITE_SUPABASE_URL",
+            !key && "VITE_SUPABASE_ANON_KEY",
+          ].filter(Boolean);
+          if (missing.length > 0) {
+            throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
           }
           try {
             new URL(url);
