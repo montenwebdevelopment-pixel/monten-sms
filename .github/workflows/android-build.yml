@@ -24,13 +24,39 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify Supabase build configuration
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          const url = process.env.VITE_SUPABASE_URL;
+          const key = process.env.VITE_SUPABASE_ANON_KEY;
+          if (!url || !key) {
+            throw new Error(
+              "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY GitHub Actions secret",
+            );
+          }
+          try {
+            new URL(url);
+          } catch {
+            throw new Error("VITE_SUPABASE_URL is not a valid URL");
+          }
+          NODE
+
       - name: Build web assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Verify Android WebView assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
           node --input-type=module <<'NODE'
           import { existsSync, readFileSync } from "node:fs";
@@ -48,6 +74,18 @@ jobs:
             if (!existsSync(assetPath)) {
               throw new Error(`Android WebView asset is missing: ${reference}`);
             }
+          }
+
+          const bundles = references
+            .filter(([, reference]) => reference.endsWith(".js"))
+            .map(([, reference]) => readFileSync(resolve(webDir, reference), "utf8"));
+          if (
+            !process.env.VITE_SUPABASE_URL ||
+            !process.env.VITE_SUPABASE_ANON_KEY ||
+            !bundles.some((bundle) => bundle.includes(process.env.VITE_SUPABASE_URL)) ||
+            !bundles.some((bundle) => bundle.includes(process.env.VITE_SUPABASE_ANON_KEY))
+          ) {
+            throw new Error("Android JavaScript bundle is missing Supabase build configuration");
           }
 
           const config = JSON.parse(
