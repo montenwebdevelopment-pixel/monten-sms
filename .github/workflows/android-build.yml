@@ -115,8 +115,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK Artifact
+      - name: Upload MONTEN SMS Android Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: MONTEN-SMS-Android-Debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
