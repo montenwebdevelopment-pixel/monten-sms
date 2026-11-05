@@ -122,6 +122,37 @@ jobs:
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/montensms-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Verify and name signed APK
+        env:
+          APK_PATH: android/app/build/outputs/apk/release/app-release.apk
+        run: |
+          set +x
+          test -s "$APK_PATH"
+          if ! "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK_PATH"; then
+            echo "APK signature verification failed."
+            exit 1
+          fi
+          cp "$APK_PATH" monten-sms.apk
+          test -s monten-sms.apk
+
+      - name: Upload signed direct-download APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: monten-sms-android-apk
+          path: monten-sms.apk
+          if-no-files-found: error
+
       - name: Remove temporary signing files
         if: always()
         env:
