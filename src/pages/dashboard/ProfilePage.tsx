@@ -1,11 +1,152 @@
-import { useState } from "react";
-import { User, Mail, AtSign, Wallet, Save, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Smartphone, Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { User, Mail, AtSign, Wallet, Save, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Smartphone, Bell } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { formatNaira, formatDate } from "../../lib/format";
 import { Button, Card, Input } from "../../components/ui";
 import { PageHeader } from "../../components/DashboardLayout";
 import { DownloadAppButton } from "../../components/DownloadAppButton";
+import { requestPushPermission } from "../../lib/native";
+
+type PushPreferences = {
+  wallet: boolean;
+  sms: boolean;
+  email_purchase: boolean;
+  account_security: boolean;
+  promotions: boolean;
+  system_updates: boolean;
+  low_balance_threshold: number;
+};
+
+const defaultPushPreferences: PushPreferences = {
+  wallet: true,
+  sms: true,
+  email_purchase: true,
+  account_security: true,
+  promotions: false,
+  system_updates: true,
+  low_balance_threshold: 1000,
+};
+
+function PushNotificationSettings() {
+  const { profile } = useAuth();
+  const [preferences, setPreferences] = useState(defaultPushPreferences);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [permissionMessage, setPermissionMessage] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.id) return;
+
+    void supabase
+      .from("notification_preferences")
+      .select("wallet, sms, email_purchase, account_security, promotions, system_updates, low_balance_threshold")
+      .eq("user_id", profile.id)
+      .maybeSingle()
+      .then(({ data, error: loadError }) => {
+        if (!active) return;
+        if (loadError) {
+          setError("Could not load notification preferences.");
+        } else if (data) {
+          setPreferences({ ...defaultPushPreferences, ...data });
+        }
+        setLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [profile?.id]);
+
+  const save = async (next: PushPreferences) => {
+    if (!profile?.id) return;
+    setSaving(true);
+    setError("");
+    setSuccess(false);
+    const { error: saveError } = await supabase
+      .from("notification_preferences")
+      .upsert({ user_id: profile.id, ...next }, { onConflict: "user_id" });
+    if (saveError) {
+      setError("Could not save notification preferences. Please try again.");
+    } else {
+      setPreferences(next);
+      setSuccess(true);
+    }
+    setSaving(false);
+  };
+
+  const categories: { key: keyof Omit<PushPreferences, "low_balance_threshold">; title: string; detail: string }[] = [
+    { key: "wallet", title: "Wallet activity", detail: "Deposits, payments, refunds and low-balance alerts" },
+    { key: "sms", title: "SMS purchases", detail: "Purchases, received codes, completed orders and cancellations" },
+    { key: "email_purchase", title: "Email Purchase", detail: "Purchases, received codes, cancellations and refunds" },
+    { key: "account_security", title: "Account security", detail: "Sign-ins and password changes" },
+    { key: "promotions", title: "Promotions", detail: "Offers, discounts and announcements" },
+    { key: "system_updates", title: "System updates", detail: "Maintenance, service interruptions and new features" },
+  ];
+
+  if (loading) return <Card className="p-6 mt-4"><p className="text-sm text-slate-500">Loading notification preferences...</p></Card>;
+
+  return (
+    <Card className="p-6 mt-4">
+      <h3 className="font-bold text-navy-900 mb-1 flex items-center gap-2"><Bell className="w-5 h-5 text-royal-600" /> Push notifications</h3>
+      <p className="text-sm text-slate-500 mb-4">Choose which alerts this Android device can receive. Verification codes are never included in lock-screen notifications.</p>
+      {error && <div role="alert" className="mb-3 text-sm text-error-700">{error}</div>}
+      {success && <div role="status" className="mb-3 text-sm text-success-700">Notification preferences saved.</div>}
+      <div className="divide-y divide-slate-100">
+        {categories.map(({ key, title, detail }) => (
+          <label key={key} className="flex items-center justify-between gap-4 py-3 cursor-pointer">
+            <span><span className="block text-sm font-semibold text-navy-900">{title}</span><span className="block text-xs text-slate-500 mt-0.5">{detail}</span></span>
+            <input
+              type="checkbox"
+              className="h-5 w-5 shrink-0 accent-royal-600"
+              checked={preferences[key]}
+              disabled={saving}
+              onChange={(event) => void save({ ...preferences, [key]: event.target.checked })}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 max-w-xs">
+        <Input
+          label="Low balance alert threshold (₦)"
+          type="number"
+          value={String(preferences.low_balance_threshold)}
+          onChange={(value) => {
+            const threshold = Number(value);
+            if (Number.isFinite(threshold) && threshold >= 0 && threshold <= 10000000) {
+              setPreferences((current) => ({ ...current, low_balance_threshold: threshold }));
+            }
+          }}
+        />
+        <Button
+          variant="outline"
+          className="mt-2"
+          disabled={saving}
+          onClick={() => void save(preferences)}
+        >
+          <Save className="w-4 h-4" /> Save threshold
+        </Button>
+      </div>
+      <Button
+        variant="outline"
+        className="mt-4"
+        onClick={() => {
+          setPermissionMessage("");
+          void requestPushPermission().then((granted) => {
+            setPermissionMessage(granted
+              ? "Push notifications are enabled for this device."
+              : "Notification permission was not granted. You can enable it in Android Settings.");
+          });
+        }}
+      >
+        <Bell className="w-4 h-4" /> Enable on this device
+      </Button>
+      {permissionMessage && <p role="status" className="mt-2 text-sm text-slate-500">{permissionMessage}</p>}
+    </Card>
+  );
+}
 
 export function ProfilePage() {
   const { profile, session, refreshProfile } = useAuth();
@@ -66,6 +207,7 @@ export function ProfilePage() {
             <p className="text-sm text-slate-500 mb-4">Install MONTEN SMS as a real app on your phone. It runs on its own, outside the browser.</p>
             <DownloadAppButton />
           </Card>
+          {Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android" && <PushNotificationSettings />}
         </div>
       </div>
     </div>

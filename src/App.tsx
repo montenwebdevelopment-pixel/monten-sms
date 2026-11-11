@@ -27,6 +27,7 @@ import { ApkUploadPage } from "./pages/admin/ApkUploadPage";
 import { EmailOtpAdminPage } from "./pages/admin/EmailOtpAdminPage";
 import { Spinner } from "./components/ui";
 import { isNativeApp } from "./lib/native";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, profile } = useAuth();
@@ -124,6 +125,7 @@ function AppRoutes() {
   const location = useLocation();
   const { session, loading } = useAuth();
   const native = isNativeApp();
+  usePushNotifications();
 
   useEffect(() => {
     if (!CapApp || !Capacitor.isNativePlatform?.()) return;

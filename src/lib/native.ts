@@ -2,9 +2,11 @@ import { Capacitor } from "@capacitor/core";
 import { Clipboard } from "@capacitor/clipboard";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { supabase } from "./supabase";
 
 type CapacitorGlobal = { isNativePlatform?: () => boolean };
 const notifiedOtpIds = new Set<string>();
+let currentPushToken: string | null = null;
 
 export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform() || Boolean((window as { Capacitor?: CapacitorGlobal }).Capacitor?.isNativePlatform?.());
@@ -23,8 +25,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-// On iOS, remote push needs an Apple Developer account with APNs configured,
-// so the shells fall back to scheduled local notifications for OTP alerts.
 export async function requestPushPermission(): Promise<boolean> {
   if (!isNativeApp()) {
     if (!("Notification" in window)) return false;
@@ -34,29 +34,26 @@ export async function requestPushPermission(): Promise<boolean> {
   }
 
   try {
+    if (Capacitor.getPlatform() === "android") {
+      let permission = await PushNotifications.checkPermissions();
+      if (permission.receive !== "granted") {
+        permission = await PushNotifications.requestPermissions();
+      }
+      if (permission.receive !== "granted") return false;
+      await PushNotifications.register();
+      return true;
+    }
+
     await LocalNotifications.requestPermissions();
     const status = await LocalNotifications.checkPermissions();
-    if (status.display !== "granted") return false;
-
-    if (Capacitor.getPlatform() === "android") {
-      await PushNotifications.register();
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(resolve, 5000);
-        PushNotifications.addListener("registration", () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-      });
-      PushNotifications.removeAllListeners();
-    }
-    return true;
+    return status.display === "granted";
   } catch {
     return false;
   }
 }
 
-// The body deliberately omits the code so it is not shown on a locked screen.
 export async function notifyOtpReceived(otpId?: string): Promise<void> {
+  if (isNativeApp()) return;
   if (otpId && notifiedOtpIds.has(otpId)) return;
   if (otpId) {
     notifiedOtpIds.add(otpId);
@@ -66,26 +63,39 @@ export async function notifyOtpReceived(otpId?: string): Promise<void> {
     }
   }
 
-  if (!isNativeApp()) {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    new Notification("MONTEN SMS", { body: "Your verification code is ready. Open the app to view it." });
-    return;
-  }
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  new Notification("MONTEN SMS", { body: "Your verification code is ready. Open the app to view it." });
+}
 
-  try {
-    const status = await LocalNotifications.checkPermissions();
-    if (status.display !== "granted") return;
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: Date.now() % 2147483647,
-          title: "MONTEN SMS",
-          body: "Your verification code is ready. Open the app to view it.",
-          schedule: { at: new Date(Date.now() + 1000) },
-        },
-      ],
-    });
-  } catch {
-    // Notification failures must never break the OTP flow.
-  }
+export async function registerPushDevice(token: string): Promise<void> {
+  const { error } = await supabase.functions.invoke("push-device", {
+    body: { action: "register", token },
+  });
+  if (error) throw error;
+}
+
+export async function unregisterPushDevice(token: string): Promise<void> {
+  const { error } = await supabase.functions.invoke("push-device", {
+    body: { action: "unregister", token },
+  });
+  if (error) throw error;
+}
+
+export function setCurrentPushToken(token: string): void {
+  currentPushToken = token;
+}
+
+export async function unregisterCurrentPushDevice(): Promise<void> {
+  if (!currentPushToken) return;
+  const { error } = await supabase.functions.invoke("push-device", {
+    body: { action: "unregister", token: currentPushToken },
+  });
+  if (error) throw error;
+}
+
+export async function recordSecurityEvent(event: "login" | "password_changed"): Promise<void> {
+  const { error } = await supabase.functions.invoke("push-device", {
+    body: { action: "security_event", event },
+  });
+  if (error) throw error;
 }

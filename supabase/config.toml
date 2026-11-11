@@ -30,3 +30,9 @@ verify_jwt = true
 
 [functions.mailotp-proxy]
 verify_jwt = true
+
+[functions.push-device]
+verify_jwt = true
+
+[functions.push-dispatch]
+verify_jwt = false

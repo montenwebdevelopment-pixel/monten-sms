@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { supabase } from "../lib/supabase";
+import { recordSecurityEvent, unregisterCurrentPushDevice } from "../lib/native";
 import type { Profile } from "../types";
 
 interface AuthContextType {
@@ -51,6 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setLoading(false);
       } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        if (event === "SIGNED_IN") {
+          setTimeout(() => {
+            void recordSecurityEvent("login").catch((error: unknown) => {
+              console.error("Failed to record the account login alert.", error);
+            });
+          }, 0);
+        }
         (async () => {
           try {
             const { data, error } = await supabase
@@ -93,6 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session, refreshProfile]);
 
   const signOut = async () => {
+    try {
+      await unregisterCurrentPushDevice();
+    } catch (error) {
+      console.error("Failed to unregister push devices before sign out.", error);
+    }
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);

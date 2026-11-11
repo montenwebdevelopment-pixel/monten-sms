@@ -3,6 +3,7 @@ import { Lock, ArrowRight, CircleAlert as AlertCircle, CircleCheck as CheckCircl
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { Button, Input, Logo, Spinner } from "../../components/ui";
+import { recordSecurityEvent } from "../../lib/native";
 
 export function UpdatePasswordPage() {
   const navigate = useNavigate();
@@ -42,6 +43,11 @@ export function UpdatePasswordPage() {
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
+      try {
+        await recordSecurityEvent("password_changed");
+      } catch (eventError) {
+        console.error("[push] Could not record the password change alert.", eventError);
+      }
       await supabase.auth.signOut();
       setSuccess(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
