@@ -1,112 +1,108 @@
-import { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { InfoSection, PublicInfoLayout } from "../components/PublicInfoLayout";
+import { ArrowRight, Lock, ShieldCheck, Mail, Send } from "lucide-react";
+import { Logo } from "../components/ui";
+import { useNavigate } from "react-router-dom";
+
+const sections = [
+  {
+    title: "Information We Collect",
+    body: [
+      "When you create a MONTEN SMS account we collect your email address, your chosen username and full name, and a securely hashed password. We never see or store your password in readable form.",
+      "We also keep a record of your wallet balance, your deposits, your number purchases and refunds, and the virtual numbers you rent, so your account history works correctly.",
+    ],
+  },
+  {
+    title: "How We Use Your Information",
+    body: [
+      "Your information is used only to operate your account: processing wallet funding through Flutterwave, delivering the SMS codes you purchase, providing support when you contact us, and keeping your transaction records accurate.",
+      "All transactions are encrypted and processed securely through Flutterwave, a licensed payment processor. Your card details are handled entirely by Flutterwave and never reach our servers.",
+    ],
+  },
+  {
+    title: "What We Never Do",
+    body: [
+      "Your personal data (email, password) is stored securely and never shared with third parties. We do not sell your data, and we do not use it for advertising.",
+      "Virtual numbers are temporary — they protect your real phone number from spam and unwanted tracking. We don't store the content of SMS messages longer than needed to deliver them to you.",
+    ],
+  },
+  {
+    title: "Security",
+    body: [
+      "Your account is protected by secure authentication and email verification. Wallet funds are tied to your account and cannot be accessed by anyone else. All traffic between your device and MONTEN SMS is encrypted.",
+    ],
+  },
+  {
+    title: "Your Choices and Data Removal",
+    body: [
+      "You can request deletion of your account and the personal data associated with it at any time. See our Delete Account page for the exact steps — our support team processes these requests directly.",
+    ],
+  },
+];
 
 export function PrivacyPolicyPage() {
-  useEffect(() => {
-    document.title = "Privacy Policy | MONTEN SMS";
-    return () => {
-      document.title = "MONTEN SMS - OTP Verification Platform";
-    };
-  }, []);
+  const navigate = useNavigate();
 
   return (
-    <PublicInfoLayout
-      title="Privacy Policy"
-      description="This policy explains what information MONTEN SMS processes when you use our website and app, how it supports the service, and how to contact us about your information."
-    >
-      <p className="text-sm leading-7 text-slate-500">Last updated: November 3, 2026</p>
+    <div className="min-h-screen bg-white">
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <Logo size="md" />
+          <button onClick={() => navigate("/")} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-royal-600 text-white text-sm font-semibold hover:bg-royal-700 transition-colors">
+            Back to Home <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </nav>
 
-      <InfoSection title="About MONTEN SMS">
-        <p>
-          MONTEN SMS provides accounts for purchasing temporary virtual phone numbers and receiving SMS verification messages. The website and Android app use a shared wallet, with wallet deposits currently in Nigerian naira (NGN).
-        </p>
-        <p>
-          For privacy questions, contact <a className="font-semibold text-royal-600 hover:text-royal-700" href="mailto:support@montensms.com">support@montensms.com</a>. CAC company registration is pending; this policy does not state a registered company name, number, or address.
-        </p>
-      </InfoSection>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-royal-50 text-royal-700 text-xs font-medium mb-4">
+          <Lock className="w-3.5 h-3.5" /> Privacy Policy
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-navy-900 tracking-tight mb-3">Privacy Policy</h1>
+        <p className="text-sm text-slate-500 mb-10">Last updated: November 2026</p>
 
-      <InfoSection title="Information processed">
-        <ul className="list-disc space-y-2 pl-5">
-          <li><strong>Account information:</strong> name, username, email address, profile information, email-verification status, and authentication credentials used to sign in.</li>
-          <li><strong>Wallet and payment information:</strong> wallet balance, deposit and purchase amounts, transaction references and statuses, payment type, and related timestamps. Payments are initiated and verified through Flutterwave; the app currently accepts NGN deposits.</li>
-          <li><strong>Virtual-number and message information:</strong> number order identifiers, phone number, destination country, selected service and operator, order status, and the SMS text and code returned for an order.</li>
-          <li><strong>Support and service information:</strong> support messages, recent chat history sent when contacting the in-app support assistant, support-ticket details, and service notifications.</li>
-          <li><strong>Verification and operational information:</strong> email-verification code records and request timestamps used to deliver and protect account verification and recovery flows.</li>
-        </ul>
-      </InfoSection>
+        <div className="space-y-8">
+          {sections.map((s) => (
+            <section key={s.title}>
+              <h2 className="text-lg font-bold text-navy-900 mb-2">{s.title}</h2>
+              <div className="space-y-2">
+                {s.body.map((p, i) => (
+                  <p key={i} className="text-sm text-slate-600 leading-relaxed">{p}</p>
+                ))}
+              </div>
+            </section>
+          ))}
 
-      <InfoSection title="How we use information">
-        <p>
-          We process this information to create and secure accounts, provide the wallet and number-purchase features, deliver and display SMS/OTP messages, record and reconcile payments and refunds, send verification and recovery emails, provide notifications, and respond to support requests.
-        </p>
-        <p>
-          When you contact support, recent conversation messages may be sent to our support service so it can respond to account or service questions. Support records may be created when a request is escalated.
-        </p>
-      </InfoSection>
+          <section className="bg-slate-50 rounded-2xl p-5 sm:p-6">
+            <h2 className="text-lg font-bold text-navy-900 mb-2 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-royal-600" /> Contact Us</h2>
+            <p className="text-sm text-slate-600 leading-relaxed mb-3">
+              Questions about this policy or how your data is handled? Reach our support team on Telegram at{" "}
+              <a href="https://t.me/montensmssupport" target="_blank" rel="noopener noreferrer" className="font-semibold text-royal-600 hover:text-royal-700 underline underline-offset-2">@montensmssupport</a>{" "}
+              or by email at{" "}
+              <a href="mailto:support@montensms.com" className="font-semibold text-royal-600 hover:text-royal-700 underline underline-offset-2">support@montensms.com</a>.
+            </p>
+            <p className="text-xs text-slate-400">MONTEN SMS &mdash; support@montensms.com</p>
+          </section>
+        </div>
 
-      <InfoSection title="Service providers and sharing">
-        <p>
-          MONTEN SMS uses service providers to operate its features. Information is shared with them as needed for the service:
-        </p>
-        <ul className="list-disc space-y-2 pl-5">
-          <li><strong>Supabase</strong> provides authentication, database, and backend services for account and service data.</li>
-          <li><strong>Flutterwave</strong> processes wallet deposits. The payment flow sends customer name, email, amount, and currency information and uses provider transaction details to verify and record payment.</li>
-          <li><strong>5SIM</strong> supplies virtual numbers. Number requests include country, service, and operator selection; 5SIM returns number-order and SMS information that is shown in your account.</li>
-          <li><strong>Resend</strong> delivers account-verification and password-recovery emails using the relevant email address and message content.</li>
-        </ul>
-        <p>
-          We do not claim that these providers store information only for MONTEN SMS or that they immediately erase their copies when an account request is made. Their own handling is subject to their terms and privacy practices. We may also disclose information when required by applicable law or to address security, fraud, payment disputes, or support issues.
-        </p>
-      </InfoSection>
+        <div className="mt-10 pt-6 border-t border-slate-100 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <a href="/privacy" className="text-royal-600 hover:text-royal-700 font-medium">Privacy Policy</a>
+          <a href="/delete-account" className="text-royal-600 hover:text-royal-700 font-medium">Delete Account</a>
+          <button onClick={() => navigate("/")} className="text-slate-500 hover:text-navy-900 font-medium inline-flex items-center gap-1">
+            Back to Home <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
 
-      <InfoSection title="Notifications, clipboard, and external services">
-        <p>
-          The app may ask for notification permission so it can tell you when an SMS code is ready. Notification text does not include the OTP code. When you choose to copy a code, the app uses your device or browser clipboard.
-        </p>
-        <p>
-          The website and app link to third-party social and support services. If you follow those links, those services handle information under their own policies.
-        </p>
-        <p>
-          The deployed website has been observed loading a third-party badge script. Its purpose and data handling have not yet been confirmed. We will update this notice if that review identifies additional collection or sharing.
-        </p>
-      </InfoSection>
-
-      <InfoSection title="Storage and security">
-        <p>
-          Account, wallet, order, SMS/OTP, notification, and support records are stored in the service database. In particular, received SMS text and codes are saved with number-order records; this project does not define a fixed automatic deletion period for them.
-        </p>
-        <p>
-          The application uses authenticated sessions, database access controls, HTTPS for its external payment and email service calls, and server-side payment verification. These measures do not guarantee that all risks are eliminated. Further details about hosting locations, encryption at rest, backups, and provider access have not been confirmed and are not promised here.
-        </p>
-      </InfoSection>
-
-      <InfoSection title="Retention and account-deletion requests">
-        <p>
-          MONTEN SMS has not established fixed retention periods for all categories of information. Records may need to be retained or limited for legitimate payment reconciliation, accounting, security, fraud prevention, customer disputes, or legal compliance purposes, as applicable. Any applicable retention period is subject to confirmation and legal requirements.
-        </p>
-        <p>
-          There is not currently an automatic account-deletion feature in the app or an operational self-service deletion process. You can email <a className="font-semibold text-royal-600 hover:text-royal-700" href="mailto:support@montensms.com?subject=MONTEN%20SMS%20account%20deletion%20request">support@montensms.com</a> to request account deletion. See our <Link className="font-semibold text-royal-600 hover:text-royal-700" to="/delete-account">Account Deletion page</Link> for what to include. A request is not an immediate deletion confirmation; support will review it and explain next steps.
-        </p>
-        <p>
-          A deletion request does not require you to spend your remaining wallet balance. An unused-wallet refund request is a separate process and a pending refund does not prevent you from submitting a deletion request. Some transaction or payment records may need to be retained for legitimate purposes, subject to applicable requirements. We cannot promise immediate deletion of information held by third-party providers.
-        </p>
-      </InfoSection>
-
-      <InfoSection title="Unused-wallet refunds">
-        <p>
-          To request a refund of unused wallet funds, email <a className="font-semibold text-royal-600 hover:text-royal-700" href="mailto:support@montensms.com?subject=MONTEN%20SMS%20unused%20wallet%20refund%20request">support@montensms.com</a> with your registered email address and username. We may request additional account or transaction details reasonably needed to verify the request. After the required information is received and verified, refunds are to be processed within 2–3 working days.
-        </p>
-        <p>
-          Do not email your password, one-time verification codes, login links, or payment-card details. A refund request and an account-deletion request are separate; you do not have to spend your wallet balance before requesting deletion.
-        </p>
-      </InfoSection>
-
-      <InfoSection title="Contact and updates">
-        <p>
-          For privacy questions, data requests, or help with this policy, email <a className="font-semibold text-royal-600 hover:text-royal-700" href="mailto:support@montensms.com">support@montensms.com</a>. This policy may be updated as the service and its data practices change. The date at the top indicates when this page was last revised.
-        </p>
-      </InfoSection>
-    </PublicInfoLayout>
+      <footer className="bg-navy-900 text-slate-400 py-8 px-4 sm:px-6 text-center text-sm">
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <a href="mailto:support@montensms.com" className="w-10 h-10 rounded-lg bg-navy-800 hover:bg-royal-600 flex items-center justify-center text-slate-300 hover:text-white transition-colors" aria-label="Email support">
+            <Mail className="w-5 h-5" />
+          </a>
+          <a href="https://t.me/montensmssupport" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-lg bg-navy-800 hover:bg-royal-600 flex items-center justify-center text-slate-300 hover:text-white transition-colors" aria-label="Telegram support">
+            <Send className="w-5 h-5" />
+          </a>
+        </div>
+        <p>&copy; 2025 MONTEN SMS. All rights reserved.</p>
+      </footer>
+    </div>
   );
 }

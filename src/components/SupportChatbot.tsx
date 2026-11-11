@@ -5,6 +5,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { supabase, EDGE_FUNCTION_BASE } from "../lib/supabase";
 import { quickReplyTopics, getFaqById } from "../lib/supportFaqs";
+import { isNativeApp } from "../lib/native";
 
 // Messages only ever carry PLAIN TEXT. Anything richer (ticket card, links,
 // buttons) is described by `kind` and built from trusted code at render time,
@@ -143,6 +144,7 @@ async function callSupportAgent(message: string, history: { role: "user" | "assi
 
 export function SupportChatbot() {
   const { profile, session } = useAuth();
+  const nativeApp = isNativeApp();
   const signedIn = Boolean(session?.user);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
@@ -443,6 +445,7 @@ export function SupportChatbot() {
         <button
           onClick={handleOpen}
           className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-royal-600 text-white shadow-lg transition-all hover:scale-105 hover:bg-royal-700 hover:shadow-xl group"
+          style={nativeApp ? { bottom: "calc(4.75rem + env(safe-area-inset-bottom))" } : undefined}
           aria-label="Open MONTEN Support chat"
           title="Open MONTEN Support chat"
         >
@@ -458,7 +461,13 @@ export function SupportChatbot() {
 
       {/* Chat window */}
       {open && (
-        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] sm:w-96 max-w-[400px] h-[min(600px,calc(100vh-3rem))] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
+        <div
+          className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] sm:w-96 max-w-[400px] h-[min(600px,calc(100vh-3rem))] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-fade-in"
+          style={nativeApp ? {
+            bottom: "calc(4.75rem + env(safe-area-inset-bottom))",
+            height: "min(600px, max(240px, calc(100dvh - 5.75rem - env(safe-area-inset-bottom))))",
+          } : undefined}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-navy-900 to-royal-800 text-white flex-shrink-0">
             <div className="flex items-center gap-3">

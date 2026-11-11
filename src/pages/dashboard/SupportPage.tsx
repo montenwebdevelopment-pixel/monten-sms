@@ -58,8 +58,7 @@ export function SupportPage() {
             {q:"How long does it take to receive an OTP?",a:"OTP delivery typically takes 30 seconds to 2 minutes. The page will automatically check for new SMS every 5 seconds."},
             {q:"What happens if I don't receive an OTP?",a:"If no SMS is received within the timeout period, the number will be marked as failed. You can cancel the number at any time while waiting."},
             {q:"How do I fund my wallet?",a:"Go to Fund Wallet, enter the amount, and pay via Flutterwave using card, bank transfer, or USSD. Your wallet is credited instantly."},
-            {q:"Are my payments secure?",a:"Wallet payments are processed by Flutterwave, and MONTEN SMS verifies payment transactions before crediting your wallet. For information about data handled by payment providers, see our Privacy Policy."},
-            {q:"How do I request a refund for unused wallet funds?",a:"Email support@montensms.com with your registered email address, username, and any additional details reasonably needed to verify the request. Once the required information is received and verified, refunds are to be processed within 2–3 working days. A pending refund does not prevent an account-deletion request."}].map(faq => (
+            {q:"Are my payments secure?",a:"Yes, all payments are processed securely through Flutterwave. We verify every transaction before crediting your wallet."}].map(faq => (
             <div key={faq.q} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
               <h4 className="font-semibold text-navy-900 text-sm mb-1">{faq.q}</h4>
               <p className="text-sm text-slate-500">{faq.a}</p>

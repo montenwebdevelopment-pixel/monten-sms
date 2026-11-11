@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
 import { Search, MapPin, ChevronDown, Loader as Loader2, ShoppingBag, Phone, CircleCheck as CheckCircle, Circle as XCircle, Clock, ArrowRight, ArrowLeft, Copy, Check, X, CircleAlert as AlertCircle, RefreshCw, TrendingUp, Package, Globe, Timer } from "lucide-react";
+import { supabase, EDGE_FUNCTION_BASE } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { formatNaira, countryFlag } from "../../lib/format";
 import { copyToClipboard, notifyOtpReceived } from "../../lib/native";
 import { Button, Card, Input, EmptyState } from "../../components/ui";
 import { PageHeader } from "../../components/DashboardLayout";
-import { verificationApi, VerificationApiError, type PurchaseNumberResult } from "../../lib/verificationApi";
 import type { Country, Service, Offer } from "../../types";
 
 type Step = "country" | "services" | "offers" | "result";
@@ -71,7 +70,6 @@ const POPULAR_SERVICES: { code: string; name: string }[] = [
 
 export function BuyNumbersPage() {
   const { profile, refreshProfile } = useAuth();
-  const location = useLocation();
   const [step, setStep] = useState<Step>("country");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -91,7 +89,7 @@ export function BuyNumbersPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
 
-  const [purchaseResult, setPurchaseResult] = useState<PurchaseNumberResult | null>(null);
+  const [purchaseResult, setPurchaseResult] = useState<any>(null);
   const [smsStatus, setSmsStatus] = useState<"waiting" | "received" | "canceled" | "failed">("waiting");
 
   const [smsCode, setSmsCode] = useState<string | null>(null);
@@ -103,7 +101,9 @@ export function BuyNumbersPage() {
   const [manualChecking, setManualChecking] = useState(false);
   const [lastChecked, setLastChecked] = useState<number | null>(null);
   const pollRef = useRef<number | null>(null);
+  const authHeadersRef = useRef<{ Authorization: string; "Content-Type": string } | null>(null);
 
+  useEffect(() => { fetchCountries(); }, []);
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   // Live countdown timer — runs while waiting and after OTP received
@@ -118,15 +118,32 @@ export function BuyNumbersPage() {
     return () => clearInterval(timer);
   }, [expiresAt, smsStatus]);
 
+  const getAuthHeaders = async () => {
+    const { data: session } = await supabase.auth.getSession();
+    return {
+      Authorization: `Bearer ${session.session?.access_token ?? ""}`,
+      "Content-Type": "application/json",
+    };
+  };
 
   const fetchCountries = async (attempt = 1) => {
     setCountriesLoading(true);
     setCountriesError("");
     try {
-      const list = await verificationApi.getCountries();
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/countries`, { headers });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); setCountryRetryCount(attempt + 1); return fetchCountries(attempt + 1); }
+        // Upstream detail stays in the console: it names our supplier and its
+        // failure structure, neither of which belongs on a customer screen.
+        console.error("[buy-numbers] countries request failed", resp.status, data?.error);
+        setCountriesError("We couldn't load the available countries right now. Please try again in a moment."); setCountries([]); setCountryRetryCount(0); return;
+      }
+      const list = data.countries || [];
       if (list.length === 0) { setCountriesError("No countries are available right now. Please try again in a moment."); setCountries([]); return; }
       setCountries(list); setCountryRetryCount(0);
-    } catch (err) {
+    } catch (err: any) {
       if (attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); setCountryRetryCount(attempt + 1); return fetchCountries(attempt + 1); }
       console.error("[buy-numbers] countries request failed", err);
       setCountriesError("We couldn't load the available countries right now. Please check your connection and try again."); setCountries([]); setCountryRetryCount(0);
@@ -136,8 +153,13 @@ export function BuyNumbersPage() {
   const fetchServices = async (country: Country) => {
     setServicesLoading(true); setError("");
     try {
-      setServices(await verificationApi.getServices(country.code));
-    } catch (err) {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/services/${country.code}`, { headers });
+      if (!resp.ok) throw new Error(`services request failed with status ${resp.status}`);
+      const data = await resp.json();
+      if (data.error) throw new Error("services response carried an error");
+      setServices(data.services || []);
+    } catch (err: any) {
       console.error("[buy-numbers] services request failed", err);
       setError("We couldn't load the services for that country. Please try again in a moment.");
     }
@@ -147,74 +169,17 @@ export function BuyNumbersPage() {
   const fetchOffers = async (country: Country, service: Service) => {
     setOffersLoading(true); setError("");
     try {
-      setOffers(await verificationApi.getOffers(country.code, service.code));
-    } catch (err) {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/offers/${country.code}/${service.code}`, { headers });
+      if (!resp.ok) throw new Error("Failed to fetch offers");
+      const data = await resp.json();
+      setOffers(data.offers || []);
+    } catch (err: any) {
       console.error("[buy-numbers] offers request failed", err);
       setError("We couldn't load prices for that service. Please try again in a moment.");
     }
     finally { setOffersLoading(false); }
   };
-
-  useEffect(() => {
-    let active = true;
-    const state = location.state as { verificationSelection?: { country?: Country; service?: Service }; quickPurchaseService?: string } | null;
-    const selection = state?.verificationSelection;
-    const quickServiceCode = state?.quickPurchaseService;
-
-    if (selection?.country?.code && selection.service?.code) {
-      setSelectedCountry(selection.country);
-      setSelectedService(selection.service);
-      setStep("offers");
-      void fetchOffers(selection.country, selection.service);
-      return () => { active = false; };
-    }
-
-    if (!quickServiceCode) {
-      void fetchCountries();
-      return () => { active = false; };
-    }
-
-    const loadQuickPurchase = async () => {
-      setCountriesLoading(true);
-      setError("");
-      try {
-        const availableCountries = await verificationApi.getCountries();
-        if (!active) return;
-        const country = availableCountries.find((item) => item.code === "usa") ?? availableCountries[0];
-        if (!country) {
-          setError("No countries are available right now. Please choose another time to try again.");
-          return;
-        }
-        setCountries(availableCountries);
-        setSelectedCountry(country);
-        const availableServices = await verificationApi.getServices(country.code);
-        if (!active) return;
-        setServices(availableServices);
-        const service = availableServices.find((item) => item.code.toLowerCase() === quickServiceCode.toLowerCase());
-        if (!service) {
-          setStep("services");
-          setError(`${quickServiceCode} is not available in ${country.name}. Choose another service or country.`);
-          return;
-        }
-        setSelectedService(service);
-        setStep("offers");
-        setOffersLoading(true);
-        setOffers(await verificationApi.getOffers(country.code, service.code));
-      } catch (err) {
-        console.error("[buy-numbers] quick purchase setup failed", err);
-        if (active) setError("We couldn't start quick purchase. Please choose a country and service.");
-      } finally {
-        if (active) {
-          setCountriesLoading(false);
-          setServicesLoading(false);
-          setOffersLoading(false);
-        }
-      }
-    };
-
-    void loadQuickPurchase();
-    return () => { active = false; };
-  }, [location.key]);
 
   const selectCountry = (country: Country) => {
     setSelectedCountry(country);
@@ -262,12 +227,14 @@ export function BuyNumbersPage() {
   }, []);
 
   const checkSms = useCallback(async (fivesimId: string) => {
-    const smsData = await verificationApi.checkSms(fivesimId);
+    if (!authHeadersRef.current) return;
+    const smsResp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/sms/${fivesimId}`, { headers: authHeadersRef.current });
+    const smsData = await smsResp.json().catch(() => ({}));
     setLastChecked(Date.now());
     if (smsData.status === "received" && typeof smsData.smsCode === "string" && smsData.smsCode.trim().length > 0) {
       setSmsStatus("received"); setSmsCode(smsData.smsCode.trim());
       void copyToClipboard(smsData.smsCode.trim());
-      void notifyOtpReceived(fivesimId);
+      notifyOtpReceived();
       playOtpSound();
       if (pollRef.current) clearInterval(pollRef.current);
     } else if (smsData.status === "canceled" || smsData.status === "failed") {
@@ -284,10 +251,7 @@ export function BuyNumbersPage() {
     if (!purchaseResult?.id || manualChecking || smsStatus !== "waiting") return;
     setManualChecking(true);
     try { await checkSms(purchaseResult.id); }
-    catch (err) {
-      console.error("[buy-numbers] manual check failed", err);
-      setError("We couldn't check for your SMS right now. Please try again.");
-    }
+    catch (err) { console.error("[buy-numbers] manual check failed", err); }
     finally { setManualChecking(false); }
   };
 
@@ -296,11 +260,25 @@ export function BuyNumbersPage() {
     if ((profile?.wallet_balance ?? 0) < offer.price) { setError("Insufficient wallet balance. Please fund your wallet first."); return; }
     setLoading(true); setError("");
     try {
-      const data = await verificationApi.purchaseNumber({
-        country: selectedCountry.code,
-        service: selectedService.code,
-        operator: offer.operator,
+      const headers = await getAuthHeaders();
+      authHeadersRef.current = headers;
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/purchase`, {
+        method: "POST", headers,
+        body: JSON.stringify({ country: selectedCountry.code, service: selectedService.code, operator: offer.operator }),
       });
+      const data = await resp.json();
+      if (!resp.ok) {
+        // The proxy already returns customer-safe refusals for the cases the
+        // customer can act on; everything else becomes a fixed sentence.
+        console.error("[buy-numbers] purchase rejected", resp.status, data?.error);
+        const reason = resp.status === 400 && typeof data?.error === "string" && data.error.includes("Insufficient")
+          ? "Insufficient wallet balance. Please fund your wallet first."
+          : resp.status === 429
+            ? "Too many purchase attempts. Please wait a minute and try again."
+            : "We couldn't complete this purchase. Your wallet has not been charged. Please try again in a moment.";
+        setError(reason);
+        return;
+      }
       setPurchaseResult(data);
       setSmsStatus("waiting");
       setSmsCode(null);
@@ -308,51 +286,37 @@ export function BuyNumbersPage() {
       setExpiresAt(toEpochMs(data.expiresAt) ?? (Date.now() + DEFAULT_RENTAL_MS));
       setStep("result");
       refreshProfile();
-      pollRef.current = window.setInterval(() => {
-        void checkSms(data.id).catch((err) => console.error("[buy-numbers] SMS poll failed", err));
-      }, 5000);
-    } catch (err) {
-      if (err instanceof VerificationApiError) {
-        // The proxy already returns customer-safe refusals for the cases the
-        // customer can act on; everything else becomes a fixed sentence.
-        console.error("[buy-numbers] purchase rejected", err.status, err.message);
-        const reason = err.status === 400 && err.message.includes("Insufficient")
-          ? "Insufficient wallet balance. Please fund your wallet first."
-          : err.status === 429
-            ? "Too many purchase attempts. Please wait a minute and try again."
-            : "We couldn't complete this purchase. Your wallet has not been charged. Please try again in a moment.";
-        setError(reason);
-      } else {
-        console.error("[buy-numbers] purchase failed", err);
-        setError("We couldn't complete this purchase. Please try again in a moment.");
-      }
+      pollRef.current = window.setInterval(() => { checkSms(data.id); }, 5000);
+    } catch (err: any) {
+      console.error("[buy-numbers] purchase failed", err);
+      setError("We couldn't complete this purchase. Please try again in a moment.");
     }
     finally { setLoading(false); }
   };
 
   const handleCancel = async () => {
     if (!purchaseResult?.id) return;
+    const headers = await getAuthHeaders();
     try {
-      await verificationApi.cancelNumber(purchaseResult.id);
-    } catch (err) {
-      if (err instanceof VerificationApiError) {
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/cancel/${purchaseResult.id}`, { method: "POST", headers });
+      if (!resp.ok) {
         // The server refuses to cancel a number whose code already arrived. Never
         // show the number as canceled (and refunded) unless the server agreed.
-        console.error("[buy-numbers] cancel rejected", err.status);
+        console.error("[buy-numbers] cancel rejected", resp.status);
         setError(
-          err.status === 409
+          resp.status === 409
             ? "This number can no longer be canceled. If its code already arrived, it has been used."
             : "We couldn't cancel this number. Please try again in a moment."
         );
-      } else {
-        console.error("[buy-numbers] cancel failed", err);
-        setError("We couldn't cancel this number. Please try again in a moment.");
+        return;
       }
-      return;
+      setSmsStatus("canceled");
+      if (pollRef.current) clearInterval(pollRef.current);
+      refreshProfile();
+    } catch (err: any) {
+      console.error("[buy-numbers] cancel failed", err);
+      setError("We couldn't cancel this number. Please try again in a moment.");
     }
-    setSmsStatus("canceled");
-    if (pollRef.current) clearInterval(pollRef.current);
-    refreshProfile();
   };
 
   const handleCopy = (text: string) => {

@@ -11,6 +11,7 @@ import { Logo } from "./ui";
 import { MobileBottomNav } from "./MobileBottomNav";
 import type { Notification } from "../types";
 import { useOtpNotifications } from "../hooks/useOtpNotifications";
+import { getProfileAvatarUrl } from "../lib/profileAvatar";
 
 export type DashboardPage =
   | "dashboard" | "buy-numbers" | "fund-wallet" | "transactions"
@@ -100,6 +101,7 @@ export function DashboardLayout({
 
   const indicatorVisible = refreshing || pull > 8;
   const indicatorSettled = pull === 0 || refreshing;
+  const profileAvatarUrl = getProfileAvatarUrl(profile?.avatar_url);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -212,7 +214,7 @@ export function DashboardLayout({
 
             <button onClick={() => onNavigate("profile")} className="hidden lg:flex items-center gap-2 p-1 pr-2 rounded-lg hover:bg-slate-100 transition-base">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-900 to-royal-600 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
-                {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0).toUpperCase() ?? "U"}
+                {profileAvatarUrl ? <img src={profileAvatarUrl} alt="" className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0).toUpperCase() ?? "U"}
               </div>
               <span className="hidden sm:block text-sm font-medium text-navy-900 max-w-[120px] truncate">{profile?.full_name?.split(" ")[0] ?? "User"}</span>
             </button>

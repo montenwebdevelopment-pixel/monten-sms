@@ -1,6 +1,14 @@
 {
   "projectId": "68886124",
   "functions": {
+    "apk-upload": {
+      "hasChanged": false,
+      "hash": "a4f3c4c2580b015c9af49bb08e2419d0b9a4315fdcd85af8e673748c7f0d220f"
+    },
+    "email-otp-watcher": {
+      "hasChanged": false,
+      "hash": "27f2e63736a2aed5f134355b2dd6b36cce059c7fa5a48b25bb9adf72d355d171"
+    },
     "fivesim-proxy": {
       "hasChanged": false,
       "hash": "62fe41be25144f666e2eedd886d711d81b6d5df6bb80e604b37a0b5414c5535e"
@@ -20,6 +28,10 @@
     "flutterwave-webhook": {
       "hasChanged": false,
       "hash": "22f708f8ba796c693484a5bf468047c1369b92ddf6d6466b7f467a27c867c8b3"
+    },
+    "mailotp-proxy": {
+      "hasChanged": false,
+      "hash": "51aaa33104e3af4621050202c9861a8690b911c620ba09e756efad36aa6cb319"
     },
     "order-watcher": {
       "hasChanged": false,
