@@ -124,7 +124,9 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload MONTEN SMS Android Debug APK
         uses: actions/upload-artifact@v4
