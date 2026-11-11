@@ -20,6 +20,8 @@ import { ProfilePage } from "./pages/dashboard/ProfilePage";
 import { SupportPage } from "./pages/dashboard/SupportPage";
 import { SupportChatbot } from "./components/SupportChatbot";
 import { Spinner } from "./components/ui";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { AccountDeletionPage } from "./pages/AccountDeletionPage";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, profile } = useAuth();
@@ -117,6 +119,8 @@ function AppRoutes() {
     <>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/delete-account" element={<AccountDeletionPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         <Route path="/dashboard" element={<Navigate to="/dashboard/dashboard" replace />} />
         <Route path="/dashboard/*" element={<AuthGate><DashboardRouter /></AuthGate>} />

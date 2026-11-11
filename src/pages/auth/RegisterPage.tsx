@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Mail, Lock, User, AtSign, Eye, EyeOff, ArrowRight, CircleAlert as AlertCircle, Check, Bell } from "lucide-react";
 import { supabase, callEmailFunction } from "../../lib/supabase";
 import { Button, Input, Logo } from "../../components/ui";
@@ -117,6 +118,10 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
           <div className="mt-6 text-center text-sm text-slate-600">
             Already have an account? <button onClick={() => onNavigate("login")} className="text-royal-600 hover:text-royal-700 font-semibold">Sign in</button>
           </div>
+          <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+            By creating an account, you acknowledge our{" "}
+            <Link to="/privacy-policy" className="font-semibold text-royal-600 hover:text-royal-700">Privacy Policy</Link>.
+          </p>
         </div>
       </div>
       {showNotificationPrompt && (

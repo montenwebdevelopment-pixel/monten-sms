@@ -105,7 +105,12 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[flutterwave-webhook] transaction verified tx=${transactionId} ref=${verifiedTxRef} amount=${verifiedAmount}`);
 
-    if (!verifiedAmount || verifiedAmount < 100) {
+    if (currency !== "NGN") {
+      console.error(`[flutterwave-webhook] refusing unsupported currency tx=${transactionId} currency=${currency}`);
+      return jsonResponse({ status: "ignored", reason: "unsupported currency" });
+    }
+
+    if (!Number.isFinite(verifiedAmount) || verifiedAmount < 100) {
       return jsonResponse({ status: "ignored", reason: "invalid amount" });
     }
 
@@ -192,8 +197,8 @@ Deno.serve(async (req: Request) => {
       p_description: `Flutterwave deposit (${currency || ""})`,
     });
 
-    if (rpcErr) {
-      console.error("[flutterwave-webhook] credit_wallet failed:", rpcErr.message);
+    if (rpcErr || !creditedTxId) {
+      console.error("[flutterwave-webhook] credit_wallet failed:", rpcErr?.message ?? "no credited transaction returned");
       await supabase
         .from("webhook_deposits")
         .update({ status: "failed", updated_at: new Date().toISOString() })

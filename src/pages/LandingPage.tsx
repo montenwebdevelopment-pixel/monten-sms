@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Shield, Zap, Globe, Smartphone, ArrowRight, Check, Send, Megaphone, Music,
   Lock, Clock, TrendingUp
@@ -147,6 +148,10 @@ export function LandingPage() {
           </div>
           <div className="mt-8 pt-8 border-t border-navy-800 text-center text-sm">
             <p>&copy; 2025 MONTEN SMS. All rights reserved.</p>
+            <nav aria-label="Policy links" className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2">
+              <Link to="/privacy-policy" className="text-royal-300 hover:text-white">Privacy Policy</Link>
+              <Link to="/delete-account" className="text-royal-300 hover:text-white">Account Deletion</Link>
+            </nav>
             <p className="mt-2">Support: <a href="https://t.me/montensmssupport" target="_blank" rel="noopener noreferrer" className="text-royal-400 hover:text-royal-300">@montensmssupport</a></p>
           </div>
         </div>

@@ -73,7 +73,7 @@ export const faqEntries: FaqEntry[] = [
     keywords: ["refund", "money back", "reimburse", "chargeback", "get my money", "wrong charge", "overcharged"],
     question: "Refund questions",
     answer:
-      "Refund policy:\n- If you cancel a number before receiving any SMS, the cost is automatically refunded to your wallet.\n- If a number times out without receiving an SMS, the cost is automatically refunded to your wallet.\n- If you were charged incorrectly due to a system error, contact human support with your transaction reference and we'll review it.\n- Wallet funds are non-transferable and can only be used for number purchases on MONTEN SMS.",
+      "Unused wallet funds may be refunded on request. Email support@montensms.com with your registered email address, username, and any additional account or transaction details reasonably needed to verify your request. Once the required information is received and verified, refunds are to be processed within 2–3 working days. A pending refund does not prevent you from requesting account deletion, and you do not have to spend your wallet balance before requesting deletion. Number cancellation and timeout refunds are handled separately according to the order status.",
   },
   {
     id: "supported-countries",
@@ -101,14 +101,14 @@ export const faqEntries: FaqEntry[] = [
     keywords: ["safe", "secure", "security", "privacy", "private", "trust", "legit", "scam", "legitimate", "reliable", "data safe", "data secure"],
     question: "Safety and privacy",
     answer:
-      "Your safety and privacy on MONTEN SMS:\n- All transactions are encrypted and processed securely through Flutterwave, a licensed payment processor.\n- Your personal data (email, password) is stored securely and never shared with third parties.\n- Virtual numbers are temporary — they protect your real phone number from spam and unwanted tracking.\n- We don't store the content of SMS messages longer than needed to deliver them to you.\n- Wallet funds are tied to your account and cannot be accessed by anyone else.\n- MONTEN SMS is a legitimate service used by thousands of customers for SMS verification worldwide.",
+      "MONTEN SMS processes account, wallet, number-order, SMS/OTP, and support information to provide the service. We use Supabase for authentication and backend services, Flutterwave for wallet deposits, 5SIM for virtual numbers and SMS delivery, and Resend for account emails. SMS text and codes are stored with number-order records; no fixed automatic deletion period is currently specified. Read the Privacy Policy at montensms.com/privacy-policy for details or email support@montensms.com with questions.",
   },
   {
     id: "general-faq",
     keywords: ["faq", "questions", "help", "what is", "how do", "can i", "is it", "general"],
     question: "General frequently asked questions",
     answer:
-      "Common questions:\n\n• Is MONTEN SMS safe? — Yes, all transactions are encrypted and your data stays private.\n• How fast are OTPs delivered? — Usually within seconds, though some services may take a few minutes.\n• Can I use one number for multiple services? — No, each number is for one service only.\n• Do numbers expire? — Yes, each number has a rental window shown at purchase.\n• Can I get a refund? — Only if you cancel before receiving any SMS. See the refund section for details.\n• Is there a minimum deposit? — Yes, ₦100.\n• Is there a subscription? — No, you only pay per number you buy.\n• Do wallet funds expire? — No, they can be used anytime.\n\nFor anything else, use the quick-reply buttons or contact human support.",
+      "Common questions:\n\n• How fast are OTPs delivered? — Usually within seconds, though some services may take a few minutes.\n• Can I use one number for multiple services? — No, each number is for one service only.\n• Do numbers expire? — Yes, each number has a rental window shown at purchase.\n• Can I request a refund for unused wallet funds? — Yes. Email support@montensms.com with your registered email and username. After required details are received and verified, processing is targeted within 2–3 working days.\n• Can I request account deletion without spending my balance? — Yes. Email support@montensms.com; a refund request and deletion request are separate.\n• Is there a minimum deposit? — Yes, ₦100.\n• Is there a subscription? — No, you only pay per number you buy.\n• Do wallet funds expire? — No, they can be used anytime.\n\nFor privacy, deletion, or other questions, use the quick-reply buttons or contact human support.",
   },
 ];
 

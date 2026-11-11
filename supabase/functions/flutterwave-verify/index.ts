@@ -77,7 +77,7 @@ Deno.serve(async (req: Request) => {
     const currency = verifyData.data.currency;
 
     if (currency !== "NGN") return errorResponse(400, "Only NGN payments are supported");
-    if (!verifiedAmount || verifiedAmount < 100) return errorResponse(400, "Invalid payment amount (minimum ₦100)");
+    if (!Number.isFinite(verifiedAmount) || verifiedAmount < 100) return errorResponse(400, "Invalid payment amount (minimum ₦100)");
 
     const verifiedTxRef = String(verifyData.data.tx_ref || "");
     // The reference we generate (MONTEN_<timestamp>_<rand>) no longer embeds
@@ -117,8 +117,8 @@ Deno.serve(async (req: Request) => {
       p_description: `Flutterwave deposit (${currency})`,
     });
 
-    if (creditError) {
-      console.error(`[flutterwave-verify] credit_wallet failed tx=${transactionId} ref=${verifiedTxRef}: ${creditError.message}`);
+    if (creditError || !creditedTxId) {
+      console.error(`[flutterwave-verify] credit_wallet failed tx=${transactionId} ref=${verifiedTxRef}: ${creditError?.message ?? "no credited transaction returned"}`);
       return errorResponse(500, "Failed to credit wallet");
     }
 
