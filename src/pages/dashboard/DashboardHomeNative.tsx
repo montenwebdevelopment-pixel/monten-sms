@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
 import {
   ArrowDownLeft, ArrowRight, ArrowUpRight, Bell, Bot, Check, ChevronRight,
   Clock3, MessageCircle, Plus, RefreshCw, Send, ShieldCheck, ShoppingBag,
@@ -123,6 +125,22 @@ export function DashboardHomeNative({
   const [stats, setStats] = useState<DashboardStats>({ totalPurchases: null, totalSpent: null });
   const [loading, setLoading] = useState(true);
   const [loadErrors, setLoadErrors] = useState({ transactions: false, purchases: false, activeNumbers: false });
+
+  // Android: request notification permission (once, before dashboard loads)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
+    (async () => {
+      try {
+        const result = await PushNotifications.checkPermissions();
+        if (result.receive === "prompt") {
+          await PushNotifications.requestPermissions();
+        }
+      } catch(e) {
+        // Never block dashboard if user declines or fails; just log
+        console.warn("[push] Notification permission check/request error", e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let active = true;

@@ -45,7 +45,8 @@ export function usePushNotifications() {
     });
 
     const listenerHandles = Promise.all([registration, registrationError, action]);
-    void PushNotifications.checkPermissions()
+    // Channel creation and registration only after permission is granted
+    PushNotifications.checkPermissions()
       .then((permission) => {
         if (permission.receive !== "granted") return undefined;
         return PushNotifications.createChannel({
