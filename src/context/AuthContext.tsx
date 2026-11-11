@@ -32,8 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return;
+      if (error) {
+        console.error("Failed to restore the authentication session.", error);
+      }
       setSession(session);
       if (!session) setLoading(false);
     }).catch((error: unknown) => {

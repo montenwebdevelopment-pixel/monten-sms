@@ -79,7 +79,7 @@ function DashboardRouter() {
     <DashboardLayout current={page} onNavigate={handleNavigate}>
       {page === "dashboard" && (native
         ? <DashboardHomeNative onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />
-        : <DashboardHome onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />)}
+        : <DashboardHome onNavigate={handleNavigate} />)}
       {(page === "buy-numbers" || page === "services") && <BuyNumbersPage />}
       {page === "email-otp" && <EmailOtpPage />}
       {page === "fund-wallet" && <FundWalletPage />}
@@ -96,6 +96,16 @@ function DashboardRouter() {
 function AuthFlow() {
   const [otpEmail, setOtpEmail] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
+  const { session } = useAuth();
+
+  if (
+    isNativeApp() &&
+    session &&
+    ["/login", "/register", "/forgot-password"].includes(location.pathname)
+  ) {
+    return <Navigate to="/dashboard/dashboard" replace />;
+  }
 
   const handleNavigate = (page: string) => navigate(`/${page}`);
 
@@ -112,6 +122,8 @@ function AuthFlow() {
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { session, loading } = useAuth();
+  const native = isNativeApp();
 
   useEffect(() => {
     if (!CapApp || !Capacitor.isNativePlatform?.()) return;
@@ -127,10 +139,21 @@ function AppRoutes() {
     };
   }, [location.pathname, navigate]);
 
+  if (native && loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Spinner className="w-8 h-8 text-royal-600" />
+      </div>
+    );
+  }
+
   return (
     <>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="/"
+          element={native ? <Navigate to={session ? "/dashboard/dashboard" : "/login"} replace /> : <LandingPage />}
+        />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/delete-account" element={<AccountDeletionPage />} />
