@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { Smartphone, MessageSquare, CircleCheck as CheckCircle, Circle as XCircle, Clock, X, Copy, Check, RefreshCw } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { supabase, EDGE_FUNCTION_BASE } from "../../lib/supabase";
 import { formatDate, formatNaira } from "../../lib/format";
 import { Card, EmptyState, Button } from "../../components/ui";
 import { PageHeader, useDashboardRefreshKey } from "../../components/DashboardLayout";
-import { verificationApi } from "../../lib/verificationApi";
 import { notifyOtpReceived } from "../../lib/native";
 import type { PurchasedNumber } from "../../types";
 
@@ -19,6 +18,7 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
   useEffect(() => { fetchNumbers(); }, [refreshKey]);
   const fetchNumbers = async () => {
     setLoading(true);
+    setActionError("");
     try {
       const { data, error } = await supabase.from("purchased_numbers").select("*").order("created_at", { ascending: false });
       if (error) throw error;
@@ -36,30 +36,46 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
   const handleCheckSMS = async (number: PurchasedNumber) => {
     if (!number.fivesim_id) return;
     setCheckingId(number.id);
-    setActionError("");
     try {
-      const result = await verificationApi.checkSms(number.fivesim_id);
-      if (result.status === "received" && result.smsCode?.trim()) {
+      const { data: session } = await supabase.auth.getSession();
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/sms/${number.fivesim_id}`, { headers: { Authorization: `Bearer ${session.session?.access_token}` } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error ?? `SMS check failed (${resp.status})`);
+      if (data.status === "received" && typeof data.smsCode === "string" && data.smsCode.trim()) {
         void notifyOtpReceived(number.fivesim_id);
       }
+      // The server records the SMS/status change; just refresh from the server.
       await fetchNumbers();
     } catch (error) {
       console.error("[purchased-numbers] SMS check failed", error);
       setActionError("We couldn't check for your SMS right now. Please try again.");
-    } finally { setCheckingId(null); }
+    } finally {
+      setCheckingId(null);
+    }
   };
 
   const handleCancel = async (number: PurchasedNumber) => {
     if (!number.fivesim_id) return;
     setActionError("");
     try {
-      await verificationApi.cancelNumber(number.fivesim_id);
-      await fetchNumbers();
+    const { data: session } = await supabase.auth.getSession();
+    const cancelResponse = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/cancel/${number.fivesim_id}`, { method: "POST", headers: { Authorization: `Bearer ${session.session?.access_token}` } });
+    if (!cancelResponse.ok) throw new Error("Number cancellation failed.");
+    await fetchNumbers();
     } catch (error) {
       console.error("[purchased-numbers] cancel failed", error);
       setActionError("We couldn't cancel this number. Please try again.");
     }
   };
+
+  const visibleNumbers = numbers.filter((number) => (
+    view === "active" ? number.status === "waiting"
+      : view === "inbox" ? number.status === "received"
+        : true
+  ));
+  const title = view === "active" ? "Active Numbers" : view === "inbox" ? "SMS Inbox" : "Purchased Numbers";
+  const subtitle = view === "inbox" ? "View SMS verification codes received on your numbers" : "Manage your purchased phone numbers and OTPs";
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, { bg: string; icon: any; label: string }> = {
       waiting: { bg: "bg-royal-50 text-royal-600", icon: <Clock className="w-3 h-3" />, label: "Waiting" },
@@ -70,14 +86,6 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
     const s = styles[status] || styles.waiting;
     return <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${s.bg}`}>{s.icon}{s.label}</span>;
   };
-
-  const visibleNumbers = numbers.filter((number) => (
-    view === "active" ? number.status === "waiting"
-      : view === "inbox" ? number.status === "received"
-        : true
-  ));
-  const title = view === "active" ? "Active Numbers" : view === "inbox" ? "SMS Inbox" : "Purchased Numbers";
-  const subtitle = view === "inbox" ? "View SMS verification codes received on your numbers" : "Manage your purchased phone numbers and OTPs";
 
   return (
     <div className="animate-fade-in">

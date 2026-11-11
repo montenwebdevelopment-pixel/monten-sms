@@ -260,7 +260,6 @@ Deno.serve(async (req: Request) => {
         return errorResponse(502, "5SIM returned invalid data");
       }
 
-      // Persist the provider's actual rental expiry for active-number countdowns.
       const fiveSimExpires = parseExpires(data.expires);
       const fiveSimCreated = parseExpires(data.created_at);
       const expiresAt = fiveSimExpires ?? fiveSimCreated ?? (Date.now() + 5 * 60 * 1000);

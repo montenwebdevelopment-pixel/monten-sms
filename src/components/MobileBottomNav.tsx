@@ -1,7 +1,18 @@
-import { ShoppingBag, Smartphone, MessageSquare, Settings, type LucideIcon } from "lucide-react";
+import {
+  ShoppingBag, Smartphone, MessageSquare, Settings, Wallet, Mail, User,
+  type LucideIcon,
+} from "lucide-react";
 import type { DashboardPage } from "./DashboardLayout";
+import { isNativeApp } from "../lib/native";
 
-const items: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
+const nativeItems: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
+  { id: "email-otp", label: "Email", icon: Mail },
+  { id: "buy-numbers", label: "Buy Numbers", icon: ShoppingBag },
+  { id: "fund-wallet", label: "Wallet", icon: Wallet },
+  { id: "profile", label: "Settings", icon: User },
+];
+
+const webItems: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
   { id: "services", label: "Services", icon: ShoppingBag },
   { id: "active-numbers", label: "Active Numbers", icon: Smartphone },
   { id: "sms-inbox", label: "SMS Inbox", icon: MessageSquare },
@@ -9,6 +20,8 @@ const items: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
 ];
 
 export function MobileBottomNav({ current, onNavigate }: { current: DashboardPage; onNavigate: (page: DashboardPage) => void }) {
+  const items = isNativeApp() ? nativeItems : webItems;
+
   return (
     <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 lg:hidden bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
       <ul className="grid grid-cols-4">

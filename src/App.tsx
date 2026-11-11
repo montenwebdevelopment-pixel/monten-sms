@@ -4,6 +4,8 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LandingPage } from "./pages/LandingPage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { AccountDeletionPage } from "./pages/AccountDeletionPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { VerifyOtpPage } from "./pages/auth/VerifyOtpPage";
@@ -18,10 +20,13 @@ import { PurchasedNumbersPage } from "./pages/dashboard/PurchasedNumbersPage";
 import { NotificationsPage } from "./pages/dashboard/NotificationsPage";
 import { ProfilePage } from "./pages/dashboard/ProfilePage";
 import { SupportPage } from "./pages/dashboard/SupportPage";
+import { EmailOtpPage } from "./pages/dashboard/EmailOtpPage";
+import { DashboardHomeNative } from "./pages/dashboard/DashboardHomeNative";
 import { SupportChatbot } from "./components/SupportChatbot";
+import { ApkUploadPage } from "./pages/admin/ApkUploadPage";
+import { EmailOtpAdminPage } from "./pages/admin/EmailOtpAdminPage";
 import { Spinner } from "./components/ui";
-import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
-import { AccountDeletionPage } from "./pages/AccountDeletionPage";
+import { isNativeApp } from "./lib/native";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, profile } = useAuth();
@@ -66,10 +71,17 @@ function DashboardRouter() {
     navigate("/dashboard/buy-numbers", { state: { quickPurchaseService: serviceCode } });
   };
 
+  // Android/iOS builds show the original app dashboard; the website keeps the
+  // newer web dashboard.
+  const native = isNativeApp();
+
   return (
     <DashboardLayout current={page} onNavigate={handleNavigate}>
-      {page === "dashboard" && <DashboardHome onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />}
+      {page === "dashboard" && (native
+        ? <DashboardHomeNative onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />
+        : <DashboardHome onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />)}
       {(page === "buy-numbers" || page === "services") && <BuyNumbersPage />}
+      {page === "email-otp" && <EmailOtpPage />}
       {page === "fund-wallet" && <FundWalletPage />}
       {page === "transactions" && <TransactionsPage />}
       {(page === "purchased-numbers" || page === "active-numbers") && <PurchasedNumbersPage view={page === "active-numbers" ? "active" : "all"} />}
@@ -119,9 +131,12 @@ function AppRoutes() {
     <>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/delete-account" element={<AccountDeletionPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
+        <Route path="/admin/apk-upload" element={<ApkUploadPage />} />
+        <Route path="/admin/email-otp" element={<EmailOtpAdminPage />} />
         <Route path="/dashboard" element={<Navigate to="/dashboard/dashboard" replace />} />
         <Route path="/dashboard/*" element={<AuthGate><DashboardRouter /></AuthGate>} />
       </Routes>

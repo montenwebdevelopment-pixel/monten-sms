@@ -21,3 +21,12 @@ verify_jwt = true
 
 [functions.order-watcher]
 verify_jwt = false
+
+[functions.email-otp-watcher]
+verify_jwt = false
+
+[functions.apk-upload]
+verify_jwt = true
+
+[functions.mailotp-proxy]
+verify_jwt = true

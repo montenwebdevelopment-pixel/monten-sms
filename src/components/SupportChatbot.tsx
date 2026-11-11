@@ -442,11 +442,12 @@ export function SupportChatbot() {
       {!open && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-4 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-royal-600 text-white shadow-md transition-all hover:bg-royal-700 hover:shadow-lg hover:scale-105 group"
+          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-royal-600 text-white shadow-lg transition-all hover:scale-105 hover:bg-royal-700 hover:shadow-xl group"
           aria-label="Open MONTEN Support chat"
+          title="Open MONTEN Support chat"
         >
           <div className="relative">
-            <MessageCircle className="w-5 h-5" />
+            <MessageCircle className="w-6 h-6" />
             {unread && (
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-error-500 rounded-full border-2 border-royal-600" />
             )}

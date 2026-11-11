@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Clipboard } from "@capacitor/clipboard";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 type CapacitorGlobal = { isNativePlatform?: () => boolean };
@@ -25,17 +26,30 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 // On iOS, remote push needs an Apple Developer account with APNs configured,
 // so the shells fall back to scheduled local notifications for OTP alerts.
 export async function requestPushPermission(): Promise<boolean> {
-  try {
-    if (!isNativeApp()) {
-      if (!("Notification" in window)) return false;
-      if (Notification.permission === "granted") return true;
-      if (Notification.permission === "denied") return false;
-      return (await Notification.requestPermission()) === "granted";
-    }
+  if (!isNativeApp()) {
+    if (!("Notification" in window)) return false;
+    if (Notification.permission === "granted") return true;
+    if (Notification.permission === "denied") return false;
+    return (await Notification.requestPermission()) === "granted";
+  }
 
+  try {
     await LocalNotifications.requestPermissions();
     const status = await LocalNotifications.checkPermissions();
-    return status.display === "granted";
+    if (status.display !== "granted") return false;
+
+    if (Capacitor.getPlatform() === "android") {
+      await PushNotifications.register();
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 5000);
+        PushNotifications.addListener("registration", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+      PushNotifications.removeAllListeners();
+    }
+    return true;
   } catch {
     return false;
   }
@@ -67,7 +81,7 @@ export async function notifyOtpReceived(otpId?: string): Promise<void> {
           id: Date.now() % 2147483647,
           title: "MONTEN SMS",
           body: "Your verification code is ready. Open the app to view it.",
-          schedule: { at: new Date(Date.now() + 100) },
+          schedule: { at: new Date(Date.now() + 1000) },
         },
       ],
     });

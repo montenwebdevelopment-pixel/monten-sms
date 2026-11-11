@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { User, Mail, AtSign, Wallet, Save, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from "lucide-react";
+import { User, Mail, AtSign, Wallet, Save, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Smartphone, Download } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { formatNaira, formatDate } from "../../lib/format";
 import { Button, Card, Input } from "../../components/ui";
 import { PageHeader } from "../../components/DashboardLayout";
+import { DownloadAppButton } from "../../components/DownloadAppButton";
 
 export function ProfilePage() {
   const { profile, session, refreshProfile } = useAuth();
@@ -59,6 +60,11 @@ export function ProfilePage() {
               </div>
               <Button onClick={handleSave} loading={loading} disabled={loading}><Save className="w-4 h-4" /> Save Changes</Button>
             </div>
+          </Card>
+          <Card className="p-6 mt-4">
+            <h3 className="font-bold text-navy-900 mb-2 flex items-center gap-2"><Smartphone className="w-5 h-5 text-royal-600" /> Mobile App</h3>
+            <p className="text-sm text-slate-500 mb-4">Install MONTEN SMS as a real app on your phone. It runs on its own, outside the browser.</p>
+            <DownloadAppButton />
           </Card>
         </div>
       </div>

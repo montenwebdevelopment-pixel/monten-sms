@@ -1,7 +1,7 @@
 import { useState, useEffect, ReactNode, createContext, useContext } from "react";
 import {
   Menu, X, Wallet, Bell, User, LifeBuoy, LayoutDashboard, ShoppingBag,
-  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw
+  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw, Mail
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -14,7 +14,7 @@ import { useOtpNotifications } from "../hooks/useOtpNotifications";
 
 export type DashboardPage =
   | "dashboard" | "buy-numbers" | "fund-wallet" | "transactions"
-  | "purchased-numbers" | "notifications" | "profile" | "support"
+  | "purchased-numbers" | "email-otp" | "notifications" | "profile" | "support"
   | "services" | "active-numbers" | "sms-inbox" | "account-settings";
 
 interface NavItem {
@@ -26,6 +26,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: "buy-numbers", label: "Buy Numbers", icon: <ShoppingBag className="w-5 h-5" /> },
+  { id: "email-otp", label: "Email Purchase", icon: <Mail className="w-5 h-5" /> },
   { id: "fund-wallet", label: "Fund Wallet", icon: <CreditCard className="w-5 h-5" /> },
   { id: "transactions", label: "Transaction History", icon: <History className="w-5 h-5" /> },
   { id: "purchased-numbers", label: "Purchased Numbers", icon: <Smartphone className="w-5 h-5" /> },
@@ -170,8 +171,8 @@ export function DashboardLayout({
               <span className="text-sm font-bold text-navy-900">{formatNaira(profile?.wallet_balance ?? 0)}</span>
             </div>
 
-            <button onClick={() => onNavigate("support")} className="hidden sm:flex items-center gap-0.5 text-[10px] text-slate-600 hover:text-navy-900 px-1.5 py-1 rounded-md hover:bg-slate-100 transition-base">
-              <LifeBuoy className="w-3 h-3" /> Support
+            <button onClick={() => onNavigate("support")} aria-label="Support" className="hidden sm:flex items-center justify-center gap-1 text-xs text-slate-600 hover:text-navy-900 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-base">
+              <LifeBuoy className="w-3.5 h-3.5" /> Support
             </button>
 
             <div className="relative">
