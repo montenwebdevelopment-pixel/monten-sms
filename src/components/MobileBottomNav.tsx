@@ -1,15 +1,15 @@
 import {
-  ShoppingBag, Smartphone, MessageSquare, Settings, Wallet, Mail, User,
+  ShoppingBag, Smartphone, MessageSquare, Settings, Wallet, Mail,
   type LucideIcon,
 } from "lucide-react";
 import type { DashboardPage } from "./DashboardLayout";
 import { isNativeApp } from "../lib/native";
 
 const nativeItems: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
-  { id: "email-otp", label: "Email", icon: Mail },
+  { id: "email-otp", label: "Email Purchase", icon: Mail },
   { id: "buy-numbers", label: "Buy Numbers", icon: ShoppingBag },
   { id: "fund-wallet", label: "Wallet", icon: Wallet },
-  { id: "profile", label: "Settings", icon: User },
+  { id: "account-settings", label: "Account Settings", icon: Settings },
 ];
 
 const webItems: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
