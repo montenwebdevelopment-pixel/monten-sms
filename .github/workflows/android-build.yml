@@ -25,6 +25,42 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Configure optional Firebase Android client
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          const raw = process.env.ANDROID_GOOGLE_SERVICES_JSON;
+          if (!raw) {
+            console.log("Firebase Android config is not supplied; FCM registration will be disabled.");
+            process.exit(0);
+          }
+
+          let config;
+          try {
+            config = JSON.parse(raw);
+          } catch {
+            throw new Error("ANDROID_GOOGLE_SERVICES_JSON must contain valid JSON.");
+          }
+
+          const client = config.client?.find(
+            (candidate) => candidate.client_info?.android_client_info?.package_name === "com.montensms.app",
+          );
+          if (
+            !config.project_info?.project_id ||
+            !config.project_info.project_number ||
+            !client?.client_info?.mobilesdk_app_id ||
+            !client.api_key?.some((key) => key.current_key)
+          ) {
+            throw new Error("ANDROID_GOOGLE_SERVICES_JSON must include a complete Firebase client for com.montensms.app.");
+          }
+
+          writeFileSync("android/app/google-services.json", raw, { mode: 0o600 });
+          console.log("Validated Firebase Android configuration for com.montensms.app.");
+          NODE
+
       - name: Verify Supabase build configuration
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
