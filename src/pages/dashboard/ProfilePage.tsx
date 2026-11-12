@@ -137,7 +137,7 @@ function PushNotificationSettings() {
           setPermissionMessage("");
           void requestPushPermission().then((granted) => {
             setPermissionMessage(granted
-              ? "Push notifications are enabled for this device."
+              ? "Notification permission is granted on this device."
               : "Notification permission was not granted. You can enable it in Android Settings.");
           });
         }}

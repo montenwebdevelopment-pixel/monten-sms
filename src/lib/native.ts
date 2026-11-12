@@ -7,6 +7,12 @@ import { supabase } from "./supabase";
 type CapacitorGlobal = { isNativePlatform?: () => boolean };
 const notifiedOtpIds = new Set<string>();
 let currentPushToken: string | null = null;
+let automaticAndroidPromptAttempted = false;
+let androidPermissionRequest: Promise<boolean> | null = null;
+let androidRegistrationRequest: Promise<void> | null = null;
+let androidRegistrationAttempted = false;
+
+const androidPromptStorageKey = "monten.android-notification-permission-requested";
 
 export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform() || Boolean((window as { Capacitor?: CapacitorGlobal }).Capacitor?.isNativePlatform?.());
@@ -25,7 +31,59 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-export async function requestPushPermission(): Promise<boolean> {
+function hasAndroidPromptBeenAttempted(): boolean {
+  if (automaticAndroidPromptAttempted) return true;
+  try {
+    automaticAndroidPromptAttempted = window.localStorage.getItem(androidPromptStorageKey) === "true";
+  } catch (error) {
+    console.warn("[push] Could not read notification permission preference.", error);
+  }
+  return automaticAndroidPromptAttempted;
+}
+
+function markAndroidPromptAttempted(): void {
+  automaticAndroidPromptAttempted = true;
+  try {
+    window.localStorage.setItem(androidPromptStorageKey, "true");
+  } catch (error) {
+    console.warn("[push] Could not persist notification permission preference.", error);
+  }
+}
+
+async function registerAndroidPush(): Promise<void> {
+  if (!import.meta.env.VITE_FCM_CONFIGURED) {
+    console.warn("[push] Firebase Android configuration is missing; device registration was skipped.");
+    return;
+  }
+  if (androidRegistrationAttempted) return;
+  if (androidRegistrationRequest) return androidRegistrationRequest;
+
+  androidRegistrationAttempted = true;
+  androidRegistrationRequest = (async () => {
+    await PushNotifications.createChannel({
+      id: "monten_updates",
+      name: "MONTEN SMS updates",
+      description: "Wallet, purchase, security and service notifications",
+      importance: 3,
+      visibility: 0,
+    });
+    await PushNotifications.register();
+  })()
+    .catch((error: unknown) => {
+      androidRegistrationAttempted = false;
+      throw error;
+    })
+    .finally(() => {
+      androidRegistrationRequest = null;
+    });
+  return androidRegistrationRequest;
+}
+
+export function resetAndroidPushRegistration(): void {
+  androidRegistrationAttempted = false;
+}
+
+export async function requestPushPermission(options: { automatic?: boolean } = {}): Promise<boolean> {
   if (!isNativeApp()) {
     if (!("Notification" in window)) return false;
     if (Notification.permission === "granted") return true;
@@ -35,19 +93,38 @@ export async function requestPushPermission(): Promise<boolean> {
 
   try {
     if (Capacitor.getPlatform() === "android") {
-      let permission = await PushNotifications.checkPermissions();
-      if (permission.receive !== "granted") {
-        permission = await PushNotifications.requestPermissions();
+      const permission = await PushNotifications.checkPermissions();
+      let granted = permission.receive === "granted";
+
+      if (!granted) {
+        const canRequest = permission.receive === "prompt" || permission.receive === "prompt-with-rationale";
+        if (!canRequest || (options.automatic && hasAndroidPromptBeenAttempted())) return false;
+        if (options.automatic) markAndroidPromptAttempted();
+
+        if (!androidPermissionRequest) {
+          androidPermissionRequest = PushNotifications.requestPermissions()
+            .then((result) => result.receive === "granted")
+            .finally(() => {
+              androidPermissionRequest = null;
+            });
+        }
+        granted = await androidPermissionRequest;
       }
-      if (permission.receive !== "granted") return false;
-      await PushNotifications.register();
-      return true;
+
+      if (!granted) return false;
+      try {
+        await registerAndroidPush();
+      } catch (error) {
+        console.error("[push] Device registration failed; the app will continue without push registration.", error);
+      }
+      return granted;
     }
 
     await LocalNotifications.requestPermissions();
     const status = await LocalNotifications.checkPermissions();
     return status.display === "granted";
-  } catch {
+  } catch (error) {
+    console.error("[push] Could not request notification permission.", error);
     return false;
   }
 }

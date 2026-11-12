@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { Mail, Lock, User, AtSign, Eye, EyeOff, ArrowRight, CircleAlert as AlertCircle, Check, Bell } from "lucide-react";
 import { supabase, callEmailFunction } from "../../lib/supabase";
 import { Button, Input, Logo } from "../../components/ui";
@@ -43,19 +44,26 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
 
     if (result.ok) {
       setOtpEmail(normalizedEmail);
-      setVerificationRoute("verify-otp");
-      setShowNotificationPrompt(true);
+      continueRegistration("verify-otp");
       return;
     }
     if (result.code === "send_failed") {
       setOtpEmail(normalizedEmail);
-      setVerificationRoute("verify-otp?sendFailed=1");
-      setShowNotificationPrompt(true);
+      continueRegistration("verify-otp?sendFailed=1");
       return;
     }
     if (result.code === "unverified") setUnverifiedEmail(normalizedEmail);
     if (result.code === "username_taken") setUsernameAvailable(false);
     setError(result.error);
+  };
+
+  const continueRegistration = (route: string) => {
+    setVerificationRoute(route);
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+      onNavigate(route);
+      return;
+    }
+    setShowNotificationPrompt(true);
   };
 
   const finishRegistration = async (allowNotifications: boolean) => {
