@@ -3,8 +3,36 @@ name: Admin Dashboard Build
 on:
   push:
     branches: ["main"]
+    paths:
+      - ".github/workflows/admin-dashboard.yml"
+      - "admin-dashboard/**"
+      - "src/admin/**"
+      - "supabase/functions/admin-api/**"
+      - "supabase/functions/_shared/sensitive-text.mjs"
+      - "supabase/migrations/*admin*"
+      - "supabase/migrations/*app_release_management*"
+      - "supabase/config.toml"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
   pull_request:
     branches: ["main"]
+    paths:
+      - ".github/workflows/admin-dashboard.yml"
+      - "admin-dashboard/**"
+      - "src/admin/**"
+      - "supabase/functions/admin-api/**"
+      - "supabase/functions/_shared/sensitive-text.mjs"
+      - "supabase/migrations/*admin*"
+      - "supabase/migrations/*app_release_management*"
+      - "supabase/config.toml"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
   workflow_dispatch:
 
 permissions:
@@ -45,8 +73,8 @@ jobs:
           }
           NODE
 
-      - name: Type-check application sources
-        run: npm run typecheck
+      - name: Type-check admin application sources
+        run: npx tsc --noEmit -p admin-dashboard/tsconfig.json
 
       - name: Build standalone admin application
         env:
@@ -57,7 +85,22 @@ jobs:
       - name: Verify and package admin application
         run: |
           test -s dist-admin/index.html
-          grep -q "/admin/monten500/assets/" dist-admin/index.html
+          node --input-type=module <<'NODE'
+          import { existsSync, readFileSync } from "node:fs";
+          import { resolve } from "node:path";
+
+          const output = "dist-admin";
+          const html = readFileSync(resolve(output, "index.html"), "utf8");
+          const assets = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]);
+          const assetPrefix = "/admin/monten500/assets/";
+          if (assets.length < 2 || assets.some((asset) => !asset.startsWith(assetPrefix))) {
+            throw new Error("Admin HTML assets must be rooted at /admin/monten500/assets/.");
+          }
+          for (const asset of assets) {
+            const filePath = resolve(output, asset.slice("/admin/monten500/".length));
+            if (!existsSync(filePath)) throw new Error(`Missing admin asset: ${asset}`);
+          }
+          NODE
           cd dist-admin
           zip -r ../admin-dashboard.zip .
           test -s ../admin-dashboard.zip

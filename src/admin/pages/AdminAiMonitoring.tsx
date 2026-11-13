@@ -29,7 +29,7 @@ export function AdminAiMonitoring() {
 
   return (
     <div>
-      <PageHeader title="AI Monitoring" subtitle="Support assistant conversations and health. Sensitive data (passwords, OTP codes, payment details) is never stored in chats." actions={<button onClick={load} className="inline-flex items-center gap-2 text-sm font-medium bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" /> Refresh</button>} />
+      <PageHeader title="AI Monitoring" subtitle="Support conversations with recognized credentials and OTP-like codes redacted. This page does not probe Gemini availability or quota." actions={<button onClick={load} className="inline-flex items-center gap-2 text-sm font-medium bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" /> Refresh</button>} />
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm mb-4">{error}</div>}
 
@@ -68,7 +68,7 @@ export function AdminAiMonitoring() {
               </DataTable>
               <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-500 space-y-1">
                 <p className="font-bold text-slate-700">AI service status</p>
-                <p>The assistant falls back to built-in support answers whenever the AI provider is unavailable, so customers are never left without help. Live API usage and cost reporting appear here once the Gemini quota is active on your key.</p>
+                <p>Common support requests use account-aware handlers. Gemini handles general questions; if it is unavailable, customers see a clear retry or human-support message. This page does not report live API usage or quota.</p>
               </div>
             </div>
           </div>

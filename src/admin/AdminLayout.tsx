@@ -6,7 +6,7 @@ export type AdminPage =
   | "overview" | "users" | "logins" | "otp-orders" | "email-purchases"
   | "wallet" | "bulk-email" | "sent-emails" | "top-customers"
   | "developers" | "developer-performance"
-  | "support" | "ai-monitoring" | "performance" | "live-website" | "settings";
+  | "support" | "ai-monitoring" | "performance" | "live-website" | "app-management" | "settings";
 
 const NAV: { id: AdminPage; label: string; icon: typeof LayoutDashboard; group: string }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, group: "Business" },
@@ -24,6 +24,7 @@ const NAV: { id: AdminPage; label: string; icon: typeof LayoutDashboard; group: 
   { id: "ai-monitoring", label: "AI Monitoring", icon: Bot, group: "Service" },
   { id: "performance", label: "Performance", icon: Activity, group: "System" },
   { id: "live-website", label: "Live Website", icon: Globe, group: "System" },
+  { id: "app-management", label: "App Management", icon: Smartphone, group: "System" },
   { id: "settings", label: "Admin Settings", icon: Settings, group: "System" },
 ];
 

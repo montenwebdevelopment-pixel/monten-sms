@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "./adminSupabase";
 import type { Session } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "montensms@gmail.com";

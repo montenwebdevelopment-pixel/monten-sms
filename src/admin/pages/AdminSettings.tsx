@@ -58,7 +58,7 @@ export function AdminSettings() {
         </Card>
 
         <Card icon={<Bot className="w-4 h-4" />} title="AI support configuration">
-          <SecretRow name="GEMINI_API_KEY" note="AI support assistant (Gemini). Present in backend secrets; currently quota-blocked — fallback answers active." ok={false} />
+          <SecretRow name="GEMINI_API_KEY" note="AI support assistant (Gemini). This panel does not verify provider availability or quota; check server-side health and logs." ok={false} />
         </Card>
 
         <Card icon={<CreditCard className="w-4 h-4" />} title="Payment integration">

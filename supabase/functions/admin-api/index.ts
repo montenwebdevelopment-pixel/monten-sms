@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { redactSensitiveText } from "../_shared/sensitive-text.mjs";
 
 // Super Admin Portal API. Every request must present a valid Supabase access
 // token belonging to ADMIN_EMAIL. All data is read/written with service_role
@@ -15,6 +16,8 @@ const corsHeaders = {
 const ADMIN_EMAIL = "montensms@gmail.com";
 const RATE_LIMIT = 120; // requests
 const RATE_WINDOW_MS = 60_000;
+const APP_RELEASE_BUCKET = "app-release-files";
+const APP_RELEASE_MAX_BYTES = 100 * 1024 * 1024;
 
 interface Auth {
   userId: string;
@@ -61,6 +64,230 @@ async function audit(admin: ReturnType<typeof adminClient>, email: string, actio
     target_id: targetId ?? null,
     details: details ?? null,
   });
+}
+
+function validId(value: string): boolean {
+  return /^[0-9a-f-]{36}$/i.test(value);
+}
+
+function appFileType(fileName: string): "apk" | "aab" | null {
+  const extension = fileName.toLowerCase().split(".").pop();
+  return extension === "apk" || extension === "aab" ? extension : null;
+}
+
+function safeAppFileName(fileName: string): string {
+  const basename = fileName.split(/[\\/]/).pop() ?? "";
+  return basename.normalize("NFKC").replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "").slice(0, 120);
+}
+
+function appText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim();
+  if (clean.length > maxLength || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(clean)) return null;
+  return clean;
+}
+
+async function appManagement(admin: ReturnType<typeof adminClient>): Promise<Response> {
+  const [releasesResult, configResult] = await Promise.all([
+    admin.from("app_releases").select("*").order("created_at", { ascending: false }),
+    admin.from("app_release_config").select("*").eq("id", "default").single(),
+  ]);
+  if (releasesResult.error) return fail(500, "Could not load app release history.");
+  if (configResult.error) return fail(500, "Could not load app configuration.");
+  return json({ releases: releasesResult.data ?? [], config: configResult.data });
+}
+
+async function createAppUploadUrl(admin: ReturnType<typeof adminClient>, auth: Auth, body: any): Promise<Response> {
+  const fileName = appText(body?.fileName, 255);
+  const fileSize = Number(body?.fileSize);
+  const fileType = fileName ? appFileType(fileName) : null;
+  if (!fileName || /[\\/]/.test(fileName) || /[\u0000-\u001f\u007f]/.test(fileName)) return fail(400, "A valid file name is required.");
+  if (!fileType) return fail(400, "Only .apk and .aab Android release files are accepted.");
+  if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > APP_RELEASE_MAX_BYTES) return fail(400, "File size must be between 1 byte and 100 MB.");
+
+  const safeName = safeAppFileName(fileName);
+  if (!safeName || appFileType(safeName) !== fileType) return fail(400, "The file name is not supported.");
+  const path = `incoming/${crypto.randomUUID()}/${safeName}`;
+  const { data, error } = await admin.storage.from(APP_RELEASE_BUCKET).createSignedUploadUrl(path);
+  if (error || !data) {
+    console.error("[admin-api] app release upload URL failed:", error?.message);
+    return fail(500, "Could not prepare secure app file upload.");
+  }
+  await audit(admin, auth.email, "create_app_release_upload", "app_releases", undefined, { file_name: fileName, file_type: fileType, file_size: fileSize });
+  return json({ path: data.path, token: data.token, signedUrl: data.signedUrl });
+}
+
+async function validateAppFileSignature(admin: ReturnType<typeof adminClient>, path: string): Promise<boolean> {
+  const storage = admin.storage.from(APP_RELEASE_BUCKET);
+  const { data, error } = await storage.createSignedUrl(path, 60);
+  if (error || !data) return false;
+  const response = await fetch(data.signedUrl, { headers: { Range: "bytes=0-3" } });
+  if (!response.ok || !response.body) return false;
+  const reader = response.body.getReader();
+  const firstBytes = new Uint8Array(4);
+  let written = 0;
+  try {
+    while (written < firstBytes.length) {
+      const { value, done } = await reader.read();
+      if (done || !value) break;
+      const count = Math.min(value.length, firstBytes.length - written);
+      firstBytes.set(value.subarray(0, count), written);
+      written += count;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return written === 4 &&
+    firstBytes[0] === 0x50 && firstBytes[1] === 0x4b &&
+    firstBytes[2] === 0x03 && firstBytes[3] === 0x04;
+}
+
+async function completeAppUpload(admin: ReturnType<typeof adminClient>, auth: Auth, body: any): Promise<Response> {
+  const path = typeof body?.path === "string" ? body.path : "";
+  const fileName = appText(body?.fileName, 255);
+  const fileType = fileName ? appFileType(fileName) : null;
+  const fileSize = Number(body?.fileSize);
+  const safeName = fileName ? safeAppFileName(fileName) : "";
+  const pathMatch = /^incoming\/[0-9a-f-]{36}\/([A-Za-z0-9._-]{1,120})$/i.exec(path);
+  if (!pathMatch || !fileName || !fileType || pathMatch[1] !== safeName) return fail(400, "Invalid upload reference or file name.");
+  if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > APP_RELEASE_MAX_BYTES) return fail(400, "Invalid uploaded file size.");
+
+  const appName = appText(body?.appName, 100);
+  const versionName = appText(body?.versionName, 64);
+  const versionCode = appText(body?.versionCode ?? "", 32);
+  const packageName = appText(body?.packageName, 255);
+  const description = appText(body?.description ?? "", 4000);
+  const releaseNotes = appText(body?.releaseNotes ?? "", 8000);
+  if (!appName || !versionName || !packageName || versionCode === null || description === null || releaseNotes === null) {
+    return fail(400, "App name, version and package name are required; text fields must be within their size limits.");
+  }
+  if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName)) return fail(400, "Enter a valid Android package name.");
+
+  const folder = path.slice(0, path.lastIndexOf("/"));
+  const leaf = path.slice(path.lastIndexOf("/") + 1);
+  const { data: objects, error: listError } = await admin.storage.from(APP_RELEASE_BUCKET).list(folder, { limit: 10, search: leaf });
+  if (listError) return fail(500, "Could not verify the uploaded file in private storage.");
+  const object = (objects ?? []).find((item: any) => item.name === leaf);
+  const storedSize = Number(object?.metadata?.size);
+  if (!object || !Number.isSafeInteger(storedSize) || storedSize !== fileSize) return fail(400, "Uploaded file is missing or its size does not match.");
+  if (!await validateAppFileSignature(admin, path)) {
+    await admin.storage.from(APP_RELEASE_BUCKET).remove([path]);
+    return fail(400, "The uploaded file is not a valid Android ZIP archive.");
+  }
+
+  const { data, error } = await admin.from("app_releases").insert({
+    app_name: appName,
+    version_name: versionName,
+    version_code: versionCode ?? "",
+    package_name: packageName,
+    description: description ?? "",
+    release_notes: releaseNotes ?? "",
+    file_name: fileName,
+    file_type: fileType,
+    storage_path: path,
+    file_size: storedSize,
+    status: "draft",
+    created_by: auth.email,
+  }).select("*").single();
+  if (error || !data) {
+    await admin.storage.from(APP_RELEASE_BUCKET).remove([path]);
+    console.error("[admin-api] app release draft insert failed:", error?.message);
+    return fail(500, "Upload validated, but the release draft could not be saved.");
+  }
+  await audit(admin, auth.email, "create_app_release_draft", "app_releases", data.id, { file_type: fileType, file_size: storedSize, version_name: versionName });
+  return json({ release: data });
+}
+
+async function saveAppReleaseDraft(admin: ReturnType<typeof adminClient>, auth: Auth, body: any): Promise<Response> {
+  const id = typeof body?.id === "string" ? body.id : "";
+  if (!validId(id)) return fail(400, "Invalid release id.");
+  const appName = appText(body?.appName, 100);
+  const versionName = appText(body?.versionName, 64);
+  const versionCode = appText(body?.versionCode ?? "", 32);
+  const packageName = appText(body?.packageName, 255);
+  const description = appText(body?.description ?? "", 4000);
+  const releaseNotes = appText(body?.releaseNotes ?? "", 8000);
+  if (!appName || !versionName || !packageName || versionCode === null || description === null || releaseNotes === null) return fail(400, "App name, version and package name are required; text fields must be within their size limits.");
+  if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName)) return fail(400, "Enter a valid Android package name.");
+  const { data, error } = await admin.from("app_releases").update({
+    app_name: appName,
+    version_name: versionName,
+    version_code: versionCode ?? "",
+    package_name: packageName,
+    description: description ?? "",
+    release_notes: releaseNotes ?? "",
+    updated_at: new Date().toISOString(),
+  }).eq("id", id).eq("status", "draft").select("id").maybeSingle();
+  if (error) return fail(500, "Could not save this app release draft.");
+  if (!data) return fail(404, "Draft not found; published releases cannot be edited.");
+  await audit(admin, auth.email, "update_app_release_draft", "app_releases", id);
+  return json({ ok: true });
+}
+
+async function saveAppReleaseConfig(admin: ReturnType<typeof adminClient>, auth: Auth, body: any): Promise<Response> {
+  const appName = appText(body?.appName, 100);
+  const downloadUrl = appText(body?.downloadUrl ?? "", 2048);
+  const updateInfo = appText(body?.updateInfo ?? "", 4000);
+  const minimumVersion = appText(body?.minimumVersion ?? "", 64);
+  if (!appName || downloadUrl === null || updateInfo === null || minimumVersion === null || typeof body?.forceUpdate !== "boolean") {
+    return fail(400, "Invalid app configuration. Check required fields and length limits.");
+  }
+  if (downloadUrl) {
+    try {
+      const parsed = new URL(downloadUrl);
+      if (parsed.protocol !== "https:") return fail(400, "Download and store links must use HTTPS.");
+    } catch {
+      return fail(400, "Enter a valid download or store URL.");
+    }
+  }
+  const { error } = await admin.from("app_release_config").update({
+    app_name: appName,
+    download_url: downloadUrl,
+    update_info: updateInfo,
+    minimum_version: minimumVersion,
+    force_update: body.forceUpdate,
+    updated_at: new Date().toISOString(),
+  }).eq("id", "default");
+  if (error) return fail(500, "Could not save app configuration.");
+  await audit(admin, auth.email, "update_app_release_config", "app_release_config", "default");
+  return json({ ok: true });
+}
+
+async function publishAppRelease(admin: ReturnType<typeof adminClient>, auth: Auth, body: any): Promise<Response> {
+  const id = typeof body?.id === "string" ? body.id : "";
+  if (!validId(id)) return fail(400, "Invalid release id.");
+  const { data: release, error: readError } = await admin.from("app_releases").select("id,status,version_name,package_name").eq("id", id).maybeSingle();
+  if (readError) return fail(500, "Could not verify the selected release.");
+  if (!release || release.status !== "draft") return fail(404, "Draft not found or it has already been published.");
+  if (!release.version_name || !release.package_name) return fail(400, "Release version and package name are required before publishing.");
+  const { data, error } = await admin.rpc("publish_app_release", { p_release_id: id });
+  if (error || !data) return fail(400, error?.message ?? "Could not publish this release.");
+  await audit(admin, auth.email, "publish_app_release", "app_releases", id, { version_name: release.version_name, package_name: release.package_name });
+  return json({ release: data });
+}
+
+async function deleteAppReleaseDraft(admin: ReturnType<typeof adminClient>, auth: Auth, id: string): Promise<Response> {
+  if (!validId(id)) return fail(400, "Invalid release id.");
+  const { data: release, error: readError } = await admin.from("app_releases").select("id,status,storage_path").eq("id", id).maybeSingle();
+  if (readError) return fail(500, "Could not load the app release.");
+  if (!release) return fail(404, "Release not found.");
+  if (release.status !== "draft") return fail(400, "Published release files cannot be deleted here.");
+  const { error: storageError } = await admin.storage.from(APP_RELEASE_BUCKET).remove([release.storage_path]);
+  if (storageError) return fail(500, "Could not remove the private release file.");
+  const { error } = await admin.from("app_releases").delete().eq("id", id).eq("status", "draft");
+  if (error) return fail(500, "The file was removed, but the draft record could not be deleted.");
+  await audit(admin, auth.email, "delete_app_release_draft", "app_releases", id);
+  return json({ ok: true });
+}
+
+async function appReleaseDownload(admin: ReturnType<typeof adminClient>, id: string): Promise<Response> {
+  if (!validId(id)) return fail(400, "Invalid release id.");
+  const { data: release, error } = await admin.from("app_releases").select("storage_path,status,file_type").eq("id", id).maybeSingle();
+  if (error) return fail(500, "Could not load the published app file.");
+  if (!release || release.status !== "published") return fail(404, "Published app file not found.");
+  const { data, error: signError } = await admin.storage.from(APP_RELEASE_BUCKET).createSignedUrl(release.storage_path, 300, { download: true });
+  if (signError || !data) return fail(500, "Could not create a secure download link.");
+  return json({ signedUrl: data.signedUrl, fileType: release.file_type, expiresInSeconds: 300 });
 }
 
 // ---------- endpoint helpers ----------
@@ -443,7 +670,7 @@ async function ticketDetail(admin: any, id: string) {
   if (!t) return fail(404, "ticket not found");
   const { data: msgs } = await admin.from("support_messages").select("*").eq("user_id", t.user_id).order("created_at", { ascending: true }).limit(200);
   const u = await admin.auth.admin.getUserById(t.user_id);
-  return json({ ticket: t, messages: msgs ?? [], customer_email: u.data?.user?.email ?? "" });
+  return json({ ticket: t, messages: (msgs ?? []).map((m: any) => ({ ...m, content: redactSensitiveText(String(m.content ?? "")) })), customer_email: u.data?.user?.email ?? "" });
 }
 
 async function updateTicket(admin: any, id: string, body: any, auth: Auth): Promise<Response> {
@@ -472,7 +699,7 @@ async function replyTicket(admin: any, auth: Auth, body: any): Promise<Response>
     const { data: created } = await admin.from("support_conversations").insert({ user_id: t.user_id, topic: "Support" }).select("id").single();
     convoId = created?.id;
   }
-  const { error } = await admin.from("support_messages").insert({ conversation_id: convoId, user_id: t.user_id, role: "assistant", content: message.slice(0, 4000), meta: { kind: "admin_reply" } });
+  const { error } = await admin.from("support_messages").insert({ conversation_id: convoId, user_id: t.user_id, role: "assistant", content: redactSensitiveText(message).slice(0, 4000), meta: { kind: "admin_reply" } });
   if (error) return fail(500, error.message);
   await admin.from("support_tickets").update({ status: "pending", updated_at: new Date().toISOString() }).eq("id", ticketId);
   await audit(admin, auth.email, "reply_ticket", "support_tickets", ticketId, { length: message.length });
@@ -497,7 +724,7 @@ async function aiMonitoring(admin: any, q: URLSearchParams) {
   return json({
     summary: { conversations: convoCount ?? 0, messages: msgCount ?? 0, customersHelped: userIds.length, escalated, recent: recent?.length ?? 0 },
     conversations: (convos ?? []).map((c: any) => ({ ...c, customer_email: emails.get(c.user_id) ?? "" })),
-    recentMessages: recent ?? [],
+    recentMessages: (recent ?? []).map((m: any) => ({ ...m, content: redactSensitiveText(String(m.content ?? "")) })),
   });
 }
 
@@ -507,7 +734,7 @@ async function conversationDetail(admin: any, id: string) {
   if (!convo) return fail(404, "conversation not found");
   const { data: msgs } = await admin.from("support_messages").select("*").eq("conversation_id", id).order("created_at", { ascending: true });
   const u = await admin.auth.admin.getUserById(convo.user_id);
-  return json({ conversation: convo, messages: msgs ?? [], customer_email: u.data?.user?.email ?? "" });
+  return json({ conversation: convo, messages: (msgs ?? []).map((m: any) => ({ ...m, content: redactSensitiveText(String(m.content ?? "")) })), customer_email: u.data?.user?.email ?? "" });
 }
 
 // ---------- emails ----------
@@ -905,6 +1132,11 @@ Deno.serve(async (req: Request) => {
     const seg = path.split("/").filter(Boolean);
 
     if (method === "GET") {
+      if (seg[0] === "app-management") {
+        if (seg[1] === "download" && seg[2]) return await appReleaseDownload(admin, seg[2]);
+        if (seg.length === 1) return await appManagement(admin);
+        return fail(404, "unknown app management endpoint");
+      }
       if (seg[0] === "overview") return await overview(admin);
       if (seg[0] === "chart") return await chart(admin, seg[1] ?? "profiles", Math.min(90, Math.max(7, parseInt(url.searchParams.get("days") ?? "30", 10) || 30)), seg[1] === "purchased_numbers" && url.searchParams.get("successful") === "1" ? { status: "received" } : {});
       if (seg[0] === "users") return seg[1] ? await userDetail(admin, seg[1]) : await usersEndpoint(admin, url.searchParams);
@@ -929,6 +1161,11 @@ Deno.serve(async (req: Request) => {
 
     if (method === "POST") {
       const body = await req.json().catch(() => ({}));
+      if (seg[0] === "app-management" && seg[1] === "upload-url") return await createAppUploadUrl(admin, auth, body);
+      if (seg[0] === "app-management" && seg[1] === "complete-upload") return await completeAppUpload(admin, auth, body);
+      if (seg[0] === "app-management" && seg[1] === "releases") return await saveAppReleaseDraft(admin, auth, body);
+      if (seg[0] === "app-management" && seg[1] === "config") return await saveAppReleaseConfig(admin, auth, body);
+      if (seg[0] === "app-management" && seg[1] === "publish") return await publishAppRelease(admin, auth, body);
       if (seg[0] === "campaigns" && seg[1] === "test-send") return await sendTestEmail(admin, auth, body);
       if (seg[0] === "campaigns" && seg[1] === "queue") return await queueCampaign(admin, auth, body);
       if (seg[0] === "campaigns" && seg[1] === "cancel") return await cancelCampaign(admin, auth, body);
@@ -942,6 +1179,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (method === "DELETE") {
+      if (seg[0] === "app-management" && seg[1] === "releases" && seg[2]) return await deleteAppReleaseDraft(admin, auth, seg[2]);
       if (seg[0] === "campaigns" && seg[1]) return await deleteCampaign(admin, auth, seg[1]);
       if (seg[0] === "sent-emails" && seg[1] === "clear") return await clearSentEmails(admin, auth);
       if (seg[0] === "sent-emails" && seg[1]) return await deleteEmailMessage(admin, auth, seg[1]);
