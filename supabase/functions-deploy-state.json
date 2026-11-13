@@ -1,13 +1,25 @@
 {
   "projectId": "68886124",
   "functions": {
+    "admin-api": {
+      "hasChanged": false,
+      "hash": "bf2e96df7e18be89bff50af8721e8dfc941be0e35c447ed70400161c70a6eb70"
+    },
     "apk-upload": {
       "hasChanged": false,
       "hash": "a4f3c4c2580b015c9af49bb08e2419d0b9a4315fdcd85af8e673748c7f0d220f"
     },
+    "developer-api": {
+      "hasChanged": false,
+      "hash": "ecbdecd2a7dcc93fab59d0a29641ca97d5d9b49dcb8df205537b4ba7f2ea8159"
+    },
     "email-otp-watcher": {
       "hasChanged": false,
       "hash": "27f2e63736a2aed5f134355b2dd6b36cce059c7fa5a48b25bb9adf72d355d171"
+    },
+    "email-queue": {
+      "hasChanged": false,
+      "hash": "ed0f1cce0b6e988f093a58e55e63087aa0cfcb3d8bfb255965768bcf538d6e8d"
     },
     "fivesim-proxy": {
       "hasChanged": false,
@@ -37,13 +49,25 @@
       "hasChanged": false,
       "hash": "6c7c1037ae116f49c5b18b76214a70b932b96ac17716a27530c07ebadae28d73"
     },
+    "public-api": {
+      "hasChanged": false,
+      "hash": "6318806550f328e9a1f826bb80ad4013b9cb6f9d0cbb8ae57902a1a8076b9858"
+    },
     "send-otp": {
       "hasChanged": false,
-      "hash": "5a56a917f114c632342065d9404e0213a3e59f5e3412c1b5e9286298088200b0"
+      "hash": "6dd4c528b9627c8ef068a9dc5f35a9f7306396926a14de9372530f6f84d18345"
     },
     "support-agent": {
       "hasChanged": false,
-      "hash": "856e8e3e68688f7ba7cb75ca379fdb7c5111b511fae760b0f8bd2e81b2c0f3dc"
+      "hash": "79410091cb0a5ec5616f78daafc91439fbbbfdd54fc1a8d6c829c6c533ca2eed"
+    },
+    "webhook-dispatcher": {
+      "hasChanged": false,
+      "hash": "86277430e6c5c1137cda5270003684464da1304348a98f026ca2a704575a90e4"
+    },
+    "admin-developers": {
+      "hasChanged": false,
+      "hash": "8d304718b93a1caedff090735e32c8c0ba13e95a484fce91fe2359e0a854acdb"
     }
   }
 }

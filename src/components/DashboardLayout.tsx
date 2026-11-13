@@ -1,22 +1,24 @@
 import { useState, useEffect, ReactNode, createContext, useContext } from "react";
 import {
   Menu, X, Wallet, Bell, User, LifeBuoy, LayoutDashboard, ShoppingBag,
-  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw, Mail
+  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw, Mail,
+  Sun, Moon, Monitor,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { formatNaira, timeAgo } from "../lib/format";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { isNativeApp } from "../lib/native";
+import { useTheme, type ThemeMode } from "../lib/theme";
 import { Logo } from "./ui";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { DownloadAppButton } from "./DownloadAppButton";
 import type { Notification } from "../types";
-import { useOtpNotifications } from "../hooks/useOtpNotifications";
-import { getProfileAvatarUrl } from "../lib/profileAvatar";
 
 export type DashboardPage =
   | "dashboard" | "buy-numbers" | "fund-wallet" | "transactions"
-  | "purchased-numbers" | "email-otp" | "notifications" | "profile" | "support"
-  | "services" | "active-numbers" | "sms-inbox" | "account-settings";
+  | "purchased-numbers" | "email-otp" | "notifications" | "profile" | "account-settings" | "support" | "developer"
+  | "services" | "active-numbers" | "sms-inbox";
 
 interface NavItem {
   id: DashboardPage;
@@ -32,7 +34,7 @@ const navItems: NavItem[] = [
   { id: "transactions", label: "Transaction History", icon: <History className="w-5 h-5" /> },
   { id: "purchased-numbers", label: "Purchased Numbers", icon: <Smartphone className="w-5 h-5" /> },
   { id: "notifications", label: "Notifications", icon: <Bell className="w-5 h-5" /> },
-  { id: "profile", label: "Profile", icon: <User className="w-5 h-5" /> },
+  { id: "profile", label: "PROFILE", icon: <User className="w-5 h-5" /> },
   { id: "support", label: "Customer Support", icon: <LifeBuoy className="w-5 h-5" /> },
 ];
 
@@ -40,6 +42,12 @@ const socialLinks = [
   { label: "WhatsApp Channel", icon: <Megaphone className="w-5 h-5" />, href: "https://whatsapp.com/channel/0029VbC5FycGehEPOnXIme2f" },
   { label: "Telegram Channel", icon: <Send className="w-5 h-5" />, href: "https://t.me/montensms" },
   { label: "TikTok", icon: <Music className="w-5 h-5" />, href: "https://tiktok.com/@montensms" },
+];
+
+const themeOptions: { mode: ThemeMode; label: string; icon: ReactNode }[] = [
+  { mode: "light", label: "Light", icon: <Sun className="w-4 h-4" /> },
+  { mode: "dark", label: "Dark", icon: <Moon className="w-4 h-4" /> },
+  { mode: "system", label: "System", icon: <Monitor className="w-4 h-4" /> },
 ];
 
 const DashboardRefreshContext = createContext(0);
@@ -58,7 +66,10 @@ export function DashboardLayout({
   children: ReactNode;
 }) {
   const { profile, signOut, refreshProfile } = useAuth();
-  useOtpNotifications();
+  const { mode: themeMode, setTheme } = useTheme();
+  // The Android/iOS app keeps its original dashboard chrome: no "Get the App"
+  // sidebar block, since the visitor is already inside the app.
+  const native = isNativeApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -101,7 +112,6 @@ export function DashboardLayout({
 
   const indicatorVisible = refreshing || pull > 8;
   const indicatorSettled = pull === 0 || refreshing;
-  const profileAvatarUrl = getProfileAvatarUrl(profile?.avatar_url);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -140,6 +150,15 @@ export function DashboardLayout({
             </button>
           ))}
 
+          {!native && (
+            <div className="pt-3 mt-3 border-t border-navy-700">
+              <p className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Get the App</p>
+              <div className="px-3 py-1">
+                <DownloadAppButton className="w-full [&>button]:w-full [&>button]:justify-center [&>p]:text-slate-400 [&>p]:mt-1.5 [&>p]:ml-1" />
+              </div>
+            </div>
+          )}
+
           <div className="pt-3 mt-3 border-t border-navy-700">
             <p className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Our Channels</p>
             {socialLinks.map((link) => (
@@ -168,6 +187,28 @@ export function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden sm:flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Theme">
+              {themeOptions.map(({ mode, label, icon }) => (
+                <button
+                  key={mode}
+                  onClick={() => setTheme(mode)}
+                  aria-label={`${label} theme`}
+                  aria-pressed={themeMode === mode}
+                  title={label}
+                  className={`p-1.5 rounded-md transition-base ${themeMode === mode ? "bg-royal-600 text-white" : "text-slate-500 hover:text-navy-900 hover:bg-slate-100"}`}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setTheme(themeMode === "dark" ? "light" : "dark")}
+              aria-label="Toggle dark mode"
+              className="sm:hidden p-2 rounded-lg text-navy-700 hover:bg-slate-100 transition-base"
+            >
+              {themeMode === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
             <div className="lg:hidden flex items-center gap-1.5 bg-royal-50 px-3 py-1.5 rounded-lg">
               <Wallet className="w-4 h-4 text-royal-600" />
               <span className="text-sm font-bold text-navy-900">{formatNaira(profile?.wallet_balance ?? 0)}</span>
@@ -214,7 +255,7 @@ export function DashboardLayout({
 
             <button onClick={() => onNavigate("profile")} className="hidden lg:flex items-center gap-2 p-1 pr-2 rounded-lg hover:bg-slate-100 transition-base">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-900 to-royal-600 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
-                {profileAvatarUrl ? <img src={profileAvatarUrl} alt="" className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0).toUpperCase() ?? "U"}
+                {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0).toUpperCase() ?? "U"}
               </div>
               <span className="hidden sm:block text-sm font-medium text-navy-900 max-w-[120px] truncate">{profile?.full_name?.split(" ")[0] ?? "User"}</span>
             </button>

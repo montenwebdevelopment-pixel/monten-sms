@@ -1,0 +1,70 @@
+name: Admin Dashboard Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-admin-dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Supabase build configuration
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          const url = process.env.VITE_SUPABASE_URL;
+          const key = process.env.VITE_SUPABASE_ANON_KEY;
+          if (!url || !key) {
+            throw new Error("VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY GitHub secrets are required.");
+          }
+          try {
+            new URL(url);
+          } catch {
+            throw new Error("VITE_SUPABASE_URL is not a valid URL.");
+          }
+          NODE
+
+      - name: Type-check application sources
+        run: npm run typecheck
+
+      - name: Build standalone admin application
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build:admin:standalone
+
+      - name: Verify and package admin application
+        run: |
+          test -s dist-admin/index.html
+          grep -q "/admin/monten500/assets/" dist-admin/index.html
+          cd dist-admin
+          zip -r ../admin-dashboard.zip .
+          test -s ../admin-dashboard.zip
+
+      - name: Upload admin dashboard ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: monten-sms-admin-dashboard
+          path: admin-dashboard.zip
+          if-no-files-found: error

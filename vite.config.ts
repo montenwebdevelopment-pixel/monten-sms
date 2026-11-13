@@ -56,7 +56,7 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    base: "./",
+    base: mode === "android" ? "./" : "/",
     plugins: [react()],
     define: {
       "import.meta.env.VITE_FCM_CONFIGURED": JSON.stringify(hasAndroidFirebaseConfig()),

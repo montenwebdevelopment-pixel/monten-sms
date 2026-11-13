@@ -5,7 +5,6 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { supabase, EDGE_FUNCTION_BASE } from "../lib/supabase";
 import { quickReplyTopics, getFaqById } from "../lib/supportFaqs";
-import { isNativeApp } from "../lib/native";
 
 // Messages only ever carry PLAIN TEXT. Anything richer (ticket card, links,
 // buttons) is described by `kind` and built from trusted code at render time,
@@ -33,6 +32,39 @@ interface ChatMessage {
 const STORAGE_KEY = "monten_support_chat";
 const MAX_SAVED = 40;
 const MAX_TEXT_LENGTH = 1000;
+
+async function loadServerHistory(): Promise<ChatMessage[]> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) return [];
+    const res = await fetch(`${EDGE_FUNCTION_BASE}/support-agent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ action: "history" }),
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => ({}));
+    const msgs = Array.isArray(body?.messages) ? body.messages : [];
+    return msgs
+      .filter((m: any) => (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
+      .slice(-MAX_SAVED)
+      .map((m: any, i: number): ChatMessage => ({
+        id: `h-${i}-${Date.now()}`,
+        role: m.role === "assistant" ? "bot" : "user",
+        text: String(m.text).slice(0, MAX_TEXT_LENGTH * 2),
+        kind: m.kind && MESSAGE_KINDS.includes(m.kind) ? m.kind : "text",
+        timestamp: typeof m.created_at === "string" ? new Date(m.created_at).getTime() : Date.now(),
+        ticket: m.ticket && typeof m.ticket === "object" ? m.ticket : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 function isValidSavedMessage(value: unknown): value is ChatMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -121,6 +153,7 @@ async function callSupportAgent(message: string, history: { role: "user" | "assi
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ message, history }),
     });
@@ -144,7 +177,6 @@ async function callSupportAgent(message: string, history: { role: "user" | "assi
 
 export function SupportChatbot() {
   const { profile, session } = useAuth();
-  const nativeApp = isNativeApp();
   const signedIn = Boolean(session?.user);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
@@ -165,6 +197,15 @@ export function SupportChatbot() {
       setShowQuickReplies(false);
     } else {
       setMessages([makeGreeting(profile?.full_name, signedIn)]);
+    }
+    if (signedIn) {
+      loadServerHistory().then((history) => {
+        if (history.length > 0) {
+          setMessages(history);
+          setShowQuickReplies(false);
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-MAX_SAVED)));
+        }
+      });
     }
   }, [profile?.full_name, signedIn]);
 
@@ -444,10 +485,8 @@ export function SupportChatbot() {
       {!open && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-royal-600 text-white shadow-lg transition-all hover:scale-105 hover:bg-royal-700 hover:shadow-xl group"
-          style={nativeApp ? { bottom: "calc(4.75rem + env(safe-area-inset-bottom))" } : undefined}
-          aria-label="Open MONTEN Support chat"
-          title="Open MONTEN Support chat"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 pl-4 pr-5 h-14 rounded-full bg-royal-600 hover:bg-royal-700 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
+          aria-label="Open Support chat"
         >
           <div className="relative">
             <MessageCircle className="w-6 h-6" />
@@ -455,19 +494,14 @@ export function SupportChatbot() {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-error-500 rounded-full border-2 border-royal-600" />
             )}
           </div>
+          <span className="font-semibold text-sm whitespace-nowrap">Support</span>
           <span className="absolute inset-0 rounded-full bg-royal-600 animate-ping opacity-10 pointer-events-none" />
         </button>
       )}
 
       {/* Chat window */}
       {open && (
-        <div
-          className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] sm:w-96 max-w-[400px] h-[min(600px,calc(100vh-3rem))] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-fade-in"
-          style={nativeApp ? {
-            bottom: "calc(4.75rem + env(safe-area-inset-bottom))",
-            height: "min(600px, max(240px, calc(100dvh - 5.75rem - env(safe-area-inset-bottom))))",
-          } : undefined}
-        >
+        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] sm:w-96 max-w-[400px] h-[min(600px,calc(100vh-3rem))] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-navy-900 to-royal-800 text-white flex-shrink-0">
             <div className="flex items-center gap-3">
@@ -475,7 +509,7 @@ export function SupportChatbot() {
                 <Sparkles className="w-5 h-5 text-royal-200" />
               </div>
               <div>
-                <p className="font-bold text-sm leading-tight">MONTEN Support</p>
+                <p className="font-bold text-sm leading-tight">Support</p>
                 <p className="text-xs text-royal-200 leading-tight flex items-center gap-1">
                   <span className="w-1.5 h-1.5 bg-success-400 rounded-full" /> {signedIn ? "AI Assistant online" : "Sign in for account help"}
                 </p>

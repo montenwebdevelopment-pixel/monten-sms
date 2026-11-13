@@ -22,3 +22,9 @@ dist-ssr
 *.sw?
 .env
 /android/app/google-services.json
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/capacitor-cordova-android-plugins/build/
+/dist-admin/
+/admin-dashboard.zip

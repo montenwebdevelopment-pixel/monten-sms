@@ -101,7 +101,7 @@ export function BuyNumbersPage() {
   const [manualChecking, setManualChecking] = useState(false);
   const [lastChecked, setLastChecked] = useState<number | null>(null);
   const pollRef = useRef<number | null>(null);
-  const authHeadersRef = useRef<{ Authorization: string; "Content-Type": string } | null>(null);
+  const authHeadersRef = useRef<{ Authorization: string; "Content-Type": string; apikey: string } | null>(null);
 
   useEffect(() => { fetchCountries(); }, []);
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
@@ -123,6 +123,7 @@ export function BuyNumbersPage() {
     return {
       Authorization: `Bearer ${session.session?.access_token ?? ""}`,
       "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     };
   };
 

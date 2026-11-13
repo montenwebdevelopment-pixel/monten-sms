@@ -25,9 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("*")
       .eq("id", session.user.id)
       .maybeSingle();
-    if (!error && data) {
-      setProfile(data as Profile);
+    if (error) {
+      console.error("Failed to refresh the user profile.", error);
+      return;
     }
+    if (data) setProfile(data as Profile);
   }, [session]);
 
   useEffect(() => {
@@ -35,11 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return;
-      if (error) {
-        console.error("Failed to restore the authentication session.", error);
-      }
+      if (error) console.error("Failed to restore the authentication session.", error);
       setSession(session);
-      if (!session) setLoading(false);
+      if (!session || error) setLoading(false);
     }).catch((error: unknown) => {
       console.error("Failed to restore the authentication session.", error);
       if (mounted) setLoading(false);
@@ -66,7 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .select("*")
               .eq("id", session.user.id)
               .maybeSingle();
-            if (mounted && !error && data) {
+            if (error) {
+              console.error("Failed to load the user profile.", error);
+            } else if (mounted && data) {
               setProfile(data as Profile);
             }
           } catch (error) {
@@ -88,16 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     if (session?.user?.id) {
       void refreshProfile()
-        .catch((error: unknown) => {
-          console.error("Failed to refresh the user profile.", error);
-        })
+        .catch((error: unknown) => console.error("Failed to refresh the user profile.", error))
         .finally(() => {
           if (mounted) setLoading(false);
         });
     }
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [session, refreshProfile]);
 
   const signOut = async () => {
@@ -106,7 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to unregister push devices before sign out.", error);
     }
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setProfile(null);
     setSession(null);
   };

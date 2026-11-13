@@ -37,6 +37,7 @@ async function request<T>(
   if (error) throw new VerificationApiError("Unable to verify your session.", 0);
 
   const headers = new Headers(options.headers);
+  headers.set("apikey", import.meta.env.VITE_SUPABASE_ANON_KEY);
   if (data.session?.access_token) {
     headers.set("Authorization", `Bearer ${data.session.access_token}`);
   } else if (requiresAuth) {

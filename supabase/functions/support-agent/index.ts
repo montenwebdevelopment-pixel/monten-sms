@@ -23,6 +23,8 @@ function fail(status: number, message: string, code?: string) {
   return json({ error: message, ...(code ? { code } : {}) }, status);
 }
 
+const MAX_SAVED_LENGTH = 40;
+
 function maskEmail(email: string): string {
   const parts = (email || "").split("@");
   if (parts.length < 2) return "[unknown]";
@@ -66,6 +68,68 @@ interface AgentResult {
   kind?: "text" | "fallback" | "ticket_created" | "contact-human";
   ticket?: { case_ref: string; subject: string; status: string; priority: string };
   actions_taken?: string[];
+}
+
+// ---- Persistent conversation memory ----
+
+async function getOrCreateConversation(admin: ReturnType<typeof createClient>, userId: string): Promise<string> {
+  const { data } = await admin
+    .from("support_conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (data?.id) return data.id as string;
+  const { data: created, error } = await admin
+    .from("support_conversations")
+    .insert({ user_id: userId })
+    .select("id")
+    .single();
+  if (error || !created) throw error ?? new Error("conversation create failed");
+  return created.id as string;
+}
+
+async function loadStoredHistory(admin: ReturnType<typeof createClient>, conversationId: string): Promise<Turn[]> {
+  const { data, error } = await admin
+    .from("support_messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(24);
+  if (error) return [];
+  return (data ?? [])
+    .reverse()
+    .map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", text: String(m.content ?? "").slice(0, 500) }));
+}
+
+async function persistMessages(
+  admin: ReturnType<typeof createClient>,
+  conversationId: string,
+  userId: string,
+  userMsg: string,
+  result: AgentResult,
+) {
+  const rows = [
+    { conversation_id: conversationId, user_id: userId, role: "user", content: userMsg.slice(0, 1000) },
+    { conversation_id: conversationId, user_id: userId, role: "assistant", content: result.reply.slice(0, 2000), meta: { kind: result.kind ?? "text", ...(result.ticket ? { ticket: result.ticket } : {}) } },
+  ];
+  try {
+    const { error } = await admin.from("support_messages").insert(rows);
+    if (error) throw error;
+    await admin.from("support_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+  } catch (err) {
+    console.error("[support-agent] memory persist failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+// Follow-up detection: refers to the previous topic without naming it.
+function isFollowUp(msg: string): boolean {
+  const m = msg.toLowerCase().trim();
+  return (
+    /^(yes|yeah|yep|yup|sure|ok|okay|please do|go ahead|do it|escalate it|yes please|check it|check again)\b/i.test(m) ||
+    /\b(it|that|this|they|them)\b/i.test(m) && m.length < 80 && !/(deposit|wallet|balance|number|otp|payment|refund|ticket|case|transaction|price|fee)/i.test(m)
+  );
 }
 
 // ---- Account tools ----
@@ -312,7 +376,25 @@ function extractTxId(msg: string): string | null {
 }
 
 async function handleSupport(msg: string, history: Turn[], admin: ReturnType<typeof createClient>, authedClient: ReturnType<typeof createClient>, userId: string): Promise<AgentResult> {
-  const intent = supportIntent(msg);
+  let intent = supportIntent(msg);
+
+  // Follow-up handling: "yes please" / "check it" after a deposit or ticket
+  // question should continue the earlier topic using stored memory.
+  const lastAssistant = [...history].reverse().find((h) => h.role === "assistant")?.text ?? "";
+  if (intent === "general" && isFollowUp(msg) && history.length > 0) {
+    if (/escalate|support case|create a support case/i.test(lastAssistant)) {
+      return handleEscalate(msg, history, authedClient);
+    }
+    if (/pending|wallet|deposit/i.test(lastAssistant)) {
+      intent = "deposit_issue";
+    } else if (/balance/i.test(lastAssistant)) {
+      intent = "balance";
+    } else if (/ticket|case/i.test(lastAssistant)) {
+      intent = "ticket_status";
+    } else if (/transaction/i.test(lastAssistant)) {
+      intent = "account_statement";
+    }
+  }
 
   if (extractTxId(msg) && (intent === "deposit_issue" || intent === "payment_failed" || /verify.*(payment|transaction|flutterwave)/i.test(msg))) {
     return handleVerifyPayment(msg, admin, userId);
@@ -633,7 +715,8 @@ async function handleEscalate(msg: string, history: Turn[], authedClient: Return
   const userMsgs = history.filter((h) => h.role === "user").map((h) => h.text);
   const lastUser = userMsgs[userMsgs.length - 1] ?? msg;
   const subject = lastUser.length > 120 ? lastUser.slice(0, 117) + "..." : lastUser;
-  const summary = history.slice(-6).map((h) => `${h.role}: ${h.text}`).join("\n").slice(0, 1000);
+  const contextSummary = history.slice(-8).map((h) => `${h.role === "user" ? "User" : "Assistant"}: ${h.text}`).join("\n").slice(0, 1200);
+  const summary = `Summary of the user's complaint, with conversation context:\n${contextSummary}`;
 
   let ticket: any;
   try {
@@ -659,6 +742,136 @@ async function handleEscalate(msg: string, history: Turn[], authedClient: Return
     ticket: { case_ref: ticket.case_ref, subject: ticket.subject, status: escalated?.status ?? ticket.status, priority: ticket.priority },
     actions_taken: ["created support ticket", "escalated to human team"],
   };
+}
+
+// ---- LLM (Google Gemini — free tier) ----
+
+const aiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
+const GEMINI_MODEL = "gemini-3.8-flash";
+const AI_TIMEOUT_MS = 30000;
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+
+// Enhanced support-agent system prompt: human-like, emotionally intelligent,
+// honest about verified vs possible causes.
+function buildSystemPrompt(accountContext: string, firstName: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return `You are "Monten", the friendly and intelligent AI support assistant for MONTEN SMS (montensms.com).
+${firstName ? `The person you are talking to is ${firstName}.` : ""} Today's date is ${today}.
+
+HOW YOU COMMUNICATE:
+- Speak like an experienced, warm human customer-care agent: friendly, patient, polite, never robotic or scripted.
+- Adapt to the customer's emotion. If they are angry or frustrated, first acknowledge the feeling and sincerely apologize for the experience ("I'm really sorry you're dealing with this..."), stay calm, never argue, never blame the customer, and focus on fixing the problem. Offer to investigate their actual records.
+- If they are confused or new, welcome them and explain step by step in simple language.
+- Never make the customer repeat information you already have — check the account data below and the conversation history first.
+- If a previous complaint exists in their history or account data, acknowledge it ("I can see you reported this before...").
+- Keep replies concise (usually 2-6 sentences), in the customer's language (mostly English). Never reply with a list of canned questions unless genuinely offering choices.
+- If you cannot resolve something after checking, apologize, summarize what you already checked, and offer to create/escalate a support case to the human team (Telegram @montensmssupport, support@montensms.com). Only claim escalation happened if a tool actually performed it.
+
+HONESTY RULES (critical):
+- Clearly separate VERIFIED information (from account data or web search results below) from possible causes ("this could be because...").
+- NEVER invent balances, deposits, transaction statuses, delivery confirmations, outages or provider problems. If a fact isn't in your context, say so honestly.
+- If you used web search, you may summarize what you found with source links. If you did not search, never pretend you did.
+
+YOUR CAPABILITIES:
+- Natural conversation: greetings, identity questions ("What is your name?", "How are you?"), small talk, follow-ups, misspellings, incomplete sentences.
+- General knowledge questions.
+- MONTEN SMS questions — use ONLY the knowledge base below.
+- The customer's OWN account — use ONLY the live account data below.
+- Web search (built-in) for current external information: OTP/service disruptions, telecom network problems, verification service outages. Prefer official provider announcements and reputable sources, and say how findings relate to the customer's issue.
+
+MONTEN SMS KNOWLEDGE BASE:
+- What it is: a platform for renting temporary virtual phone numbers to receive SMS verification codes (OTPs) for services like WhatsApp, Telegram, Gmail, TikTok, Instagram, Facebook, Discord and 700+ more across 190+ countries.
+- Also offers an Email OTP service: rent a verified email to receive OTP codes.
+- How to buy: Dashboard -> Buy Numbers -> pick a country -> search the service -> choose an offer -> Buy. The number appears on "Purchased Numbers"; the SMS/OTP code arrives there usually within 30 seconds to 2 minutes. Each number is for one service with a limited rental window.
+- Wallet & deposits: fund with Flutterwave (card, bank transfer, USSD). Minimum deposit NGN 100. Wallet funds never expire.
+- Pricing: numbers start from about NGN 50, varying by country and service; no subscription or hidden fees.
+- Refunds: cancel before any SMS arrives, or the number times out with no SMS -> automatic wallet refund. System errors are reviewed by the human team.
+- Registration & login: sign up with full name, username, email, password (min 6 chars). A 6-digit verification code is emailed and expires in 10 minutes; use "Resend code" if needed. Password reset uses the "Forgot password" link on the login page.
+- Privacy & data: personal data is stored securely and never sold or shared; payments are processed by Flutterwave (licensed); account deletion is available on the Delete Account page. The full policies live at /privacy and /terms.
+- Support: Telegram @montensmssupport, email support@montensms.com. The AI can create a tracked support case (ticket) and escalate to the human team.
+
+THE USER'S LIVE ACCOUNT DATA (JSON; "null" = none/unknown. Treat as the only source of truth for their account):
+${accountContext}
+
+If a question needs very current world information you cannot verify, say what you know and note it may have changed.`;
+}
+
+async function buildAccountContext(admin: ReturnType<typeof createClient>, userId: string): Promise<string> {
+  try {
+    const [summary, txns, deposits, orders, tickets] = await Promise.all([
+      getAccountSummary(admin, userId).catch(() => null),
+      getTransactions(admin, userId, 8).catch(() => []),
+      getDeposits(admin, userId).catch(() => ({ wallet: [], pending: [], webhook: [] })),
+      getNumberOrders(admin, userId).catch(() => []),
+      getSupportTickets(admin, userId).catch(() => []),
+    ]);
+    return JSON.stringify({
+      profile: summary,
+      recent_transactions: (txns as any[]).slice(0, 8),
+      recent_deposits: (deposits.wallet as any[]).slice(0, 5),
+      pending_payments: (deposits.pending as any[]).slice(0, 3),
+      recent_number_orders: (orders as any[]).slice(0, 5),
+      recent_support_tickets: (tickets as any[]).slice(0, 3),
+    });
+  } catch {
+    return "{} (account data temporarily unavailable — do not invent any account details)";
+  }
+}
+
+const lastDiag: Record<string, unknown> = {};
+
+// Free-tier rate-limit safety: simple per-instance spacing between calls.
+let lastCallAt = 0;
+const MIN_CALL_GAP_MS = 1500;
+
+async function callLLM(systemPrompt: string, turns: Turn[]): Promise<string | null> {
+  if (!aiKey) {
+    lastDiag.key = "missing";
+    console.error("[support-agent] GEMINI_API_KEY not visible; fallback");
+    return null;
+  }
+  lastDiag.key = "present";
+  const now = Date.now();
+  const wait = lastCallAt + MIN_CALL_GAP_MS - now;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCallAt = Date.now();
+
+  const contents = turns.map((t) => ({
+    role: t.role === "assistant" ? "model" : "user",
+    parts: [{ text: t.text }],
+  }));
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.6, maxOutputTokens: 1024 },
+  };
+  try {
+    const res = await fetch(`${GEMINI_BASE}/${GEMINI_MODEL}:generateContent`, {
+      method: "POST",
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+      headers: { "Content-Type": "application/json", "x-goog-api-key": aiKey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      lastDiag.status = res.status;
+      lastDiag.error = errBody.slice(0, 300);
+      console.error(`[support-agent] gemini failed status=${res.status} body=${errBody.slice(0, 300)}`);
+      return null;
+    }
+    const data: any = await res.json();
+    const parts = data?.candidates?.[0]?.content?.parts ?? [];
+    const text = parts.filter((p: any) => p.text).map((p: any) => p.text).join("").trim();
+    if (text) return text;
+    lastDiag.finish_reason = data?.candidates?.[0]?.finishReason ?? "empty";
+    console.error(`[support-agent] gemini empty reply: ${JSON.stringify(lastDiag).slice(0, 200)}`);
+    return null;
+  } catch (err) {
+    lastDiag.exception = err instanceof Error ? err.message.slice(0, 120) : "unknown";
+    console.error("[support-agent] gemini call failed:", lastDiag.exception);
+    return null;
+  }
 }
 
 // ---- Main ----
@@ -690,7 +903,31 @@ Deno.serve(async (req: Request) => {
   const message = String(body.message ?? "").trim().slice(0, 1000);
   const history: Turn[] = Array.isArray(body.history) ? body.history.slice(-12).map((h: any) => ({ role: h.role === "assistant" ? "assistant" : "user", text: String(h.text ?? "").slice(0, 500) })) : [];
 
-  if (!message) return json({ reply: "Could you tell me a bit more about what you need?", actions_taken: [] });
+  if (!message) {
+    if (body.action === "history") {
+      try {
+        const conversationId = await getOrCreateConversation(admin, userId);
+        const stored = await loadStoredHistory(admin, conversationId);
+        const { data: metaRows } = await admin
+          .from("support_messages")
+          .select("role, content, meta, created_at")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
+        const messages = (metaRows ?? []).map((m: any) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          text: String(m.content ?? ""),
+          kind: m.meta?.kind,
+          ticket: m.meta?.ticket,
+          created_at: m.created_at,
+        })).slice(-MAX_SAVED_LENGTH);
+        return json({ messages });
+      } catch (err) {
+        console.error("[support-agent] history load failed:", err instanceof Error ? err.message : err);
+        return json({ messages: [] });
+      }
+    }
+    return json({ reply: "Could you tell me a bit more about what you need?", actions_taken: [] });
+  }
 
   let firstName = "";
   try {
@@ -701,9 +938,49 @@ Deno.serve(async (req: Request) => {
   console.log(`[support-agent] user=${maskEmail(userEmail)} msg_len=${message.length}`);
 
   try {
-    const category = classify(message, history);
-    const result = category === "casual" ? casualReply(message, history, firstName) : await handleSupport(message, history, admin, authedClient, userId);
-    console.log(`[support-agent] reply sent user=${maskEmail(userEmail)} category=${category} actions=${(result.actions_taken ?? []).join("|")}`);
+    // Persistent memory: merge stored history from previous sessions with
+    // what the client sent, then remember this exchange afterwards.
+    let conversationId = "";
+    let storedTurns: Turn[] = [];
+    try {
+      conversationId = await getOrCreateConversation(admin, userId);
+      storedTurns = await loadStoredHistory(admin, conversationId);
+    } catch (memErr) {
+      console.error("[support-agent] memory load failed:", memErr instanceof Error ? memErr.message : memErr);
+    }
+
+    const storedTexts = new Set(storedTurns.map((t) => `${t.role}:${t.text.toLowerCase()}`));
+    const freshTurns = history.filter((t) => !storedTexts.has(`${t.role}:${t.text.toLowerCase()}`));
+    const fullHistory = [...storedTurns, ...freshTurns].slice(-24);
+
+    let result: AgentResult;
+
+    // Fast paths that need real actions or exact data: payment verification
+    // and escalation. Everything else goes through the LLM for genuinely
+    // intelligent replies; the rule engine is the fallback when no AI key is
+    // configured or the model call fails.
+    if (extractTxId(message) && (supportIntent(message) === "deposit_issue" || /verify.*(payment|transaction|flutterwave)/i.test(message))) {
+      result = await handleVerifyPayment(message, admin, userId);
+    } else if (supportIntent(message) === "escalate" || /^(yes|yeah|sure|ok|okay|please do|go ahead)\b/i.test(message) && /escalat|human|agent|support case/i.test(fullHistory.slice(-3).map((h) => h.text).join(" "))) {
+      result = await handleEscalate(message, fullHistory, authedClient);
+    } else {
+      const [accountContext] = await Promise.all([buildAccountContext(admin, userId)]);
+      const systemPrompt = buildSystemPrompt(accountContext, firstName);
+      const llmReply = await callLLM(systemPrompt, [...fullHistory, { role: "user", text: message }]);
+      if (llmReply) {
+        result = { reply: llmReply.slice(0, 2000), actions_taken: ["llm", `model=${GEMINI_MODEL}`] };
+      } else {
+        const category = classify(message, fullHistory);
+        result = category === "casual" ? casualReply(message, fullHistory, firstName) : await handleSupport(message, fullHistory, admin, authedClient, userId);
+        result.actions_taken = [...(result.actions_taken ?? []), "ai_fallback", JSON.stringify(lastDiag).slice(0, 300)];
+      }
+    }
+
+    if (conversationId) {
+      await persistMessages(admin, conversationId, userId, message, result);
+    }
+
+    console.log(`[support-agent] reply sent user=${maskEmail(userEmail)} actions=${(result.actions_taken ?? []).join("|")}`);
     return json(result);
   } catch (err) {
     console.error(`[support-agent] error user=${maskEmail(userEmail)}:`, err instanceof Error ? err.message : err);

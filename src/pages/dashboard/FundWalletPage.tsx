@@ -45,7 +45,10 @@ export function FundWalletPage() {
     try {
       const { data: session } = await supabase.auth.getSession();
       const resp = await fetch(`${EDGE_FUNCTION_BASE}/flutterwave-config`, {
-        headers: { Authorization: `Bearer ${session.session?.access_token ?? ""}` },
+        headers: {
+          Authorization: `Bearer ${session.session?.access_token ?? ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
       });
       const data = await resp.json();
       publicKey = data.public_key;
@@ -102,7 +105,11 @@ export function FundWalletPage() {
           try {
             const verifyResp = await fetch(`${EDGE_FUNCTION_BASE}/flutterwave-verify`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.session?.access_token}` },
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session.session?.access_token}`,
+                apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              },
               body: JSON.stringify({ transactionId: txId, txRef }),
             });
             const verifyData = await verifyResp.json();

@@ -1,3 +1,5 @@
+/admin/monten500    /admin/monten500/index.html   200
+/admin/monten500/*  /admin/monten500/index.html   200
 /*    /index.html   200
 /downloads/*  /downloads/:splat  200
 /downloads/monten-sms.apk  https://egalqcwprmlyukzwnqyn.supabase.co/storage/v1/object/public/app-downloads/monten-sms.apk  301!

@@ -3,7 +3,6 @@ import { Lock, ArrowRight, CircleAlert as AlertCircle, CircleCheck as CheckCircl
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { Button, Input, Logo, Spinner } from "../../components/ui";
-import { recordSecurityEvent } from "../../lib/native";
 
 export function UpdatePasswordPage() {
   const navigate = useNavigate();
@@ -43,11 +42,6 @@ export function UpdatePasswordPage() {
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      try {
-        await recordSecurityEvent("password_changed");
-      } catch (eventError) {
-        console.error("[push] Could not record the password change alert.", eventError);
-      }
       await supabase.auth.signOut();
       setSuccess(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
@@ -56,7 +50,7 @@ export function UpdatePasswordPage() {
       if (msg.includes("different from the old")) {
         setError("Your new password must be different from your current one.");
       } else if (msg.includes("password") && (msg.includes("weak") || msg.includes("leaked") || msg.includes("common") || msg.includes("breach"))) {
-        setError("That password is too common or has been found in a data breach. Please choose a different one.");
+        setError("That password appears in public breach lists, so it isn't allowed while leak protection is enabled. Please pick a less common password.");
       } else if (msg.includes("session") || msg.includes("token") || msg.includes("expired")) {
         setError("Your reset link has expired. Please request a new one.");
       } else if (err?.message) {

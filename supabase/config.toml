@@ -31,8 +31,20 @@ verify_jwt = true
 [functions.mailotp-proxy]
 verify_jwt = true
 
-[functions.push-device]
+[functions.admin-api]
 verify_jwt = true
 
-[functions.push-dispatch]
+[functions.email-queue]
+verify_jwt = true
+
+[functions.public-api]
+verify_jwt = false
+
+[functions.developer-api]
+verify_jwt = true
+
+[functions.admin-developers]
+verify_jwt = true
+
+[functions.webhook-dispatcher]
 verify_jwt = false

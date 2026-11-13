@@ -260,14 +260,10 @@ Deno.serve(async (req: Request) => {
         return errorResponse(502, "5SIM returned invalid data");
       }
 
-      const fiveSimExpires = parseExpires(data.expires);
-      const fiveSimCreated = parseExpires(data.created_at);
-      const expiresAt = fiveSimExpires ?? fiveSimCreated ?? (Date.now() + 5 * 60 * 1000);
-
       const { data: purchased, error: insertError } = await supabaseAdmin.from("purchased_numbers").insert({
         user_id: auth.userId, fivesim_id: String(data.id), phone_number: data.phone,
         country_code: country, country_name: country, service_name: service, operator_name: actualOperator,
-        cost_price: price, selling_price: price, status: "waiting", expires_at: new Date(expiresAt).toISOString(),
+        cost_price: price, selling_price: price, status: "waiting",
       }).select().single();
 
       if (insertError) {
@@ -286,6 +282,13 @@ Deno.serve(async (req: Request) => {
         user_id: auth.userId, type: "purchase", title: "Number Purchased",
         message: `Your number ${data.phone} is ready. Waiting for OTP...`,
       });
+      // 5SIM's `expires` is an ISO 8601 timestamp. Some payloads also include
+      // `created_at`; we use whichever is present so the countdown matches
+      // 5SIM's real 5-minute window. The 5-minute fallback only applies if
+      // neither field is present.
+      const fiveSimExpires = parseExpires(data.expires);
+      const fiveSimCreated = parseExpires(data.created_at);
+      const expiresAt = fiveSimExpires ?? fiveSimCreated ?? (Date.now() + 5 * 60 * 1000);
       return jsonResponse({ id: String(data.id), phone: data.phone, operator: actualOperator, purchasedId: purchased?.id, expiresAt });
     }
 

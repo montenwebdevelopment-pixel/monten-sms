@@ -1,10 +1,8 @@
 import { useState } from "react";
+import { Mail, Lock, User, AtSign, Eye, EyeOff, ArrowRight, CircleAlert as AlertCircle, Check } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
-import { Mail, Lock, User, AtSign, Eye, EyeOff, ArrowRight, CircleAlert as AlertCircle, Check, Bell } from "lucide-react";
 import { supabase, callEmailFunction } from "../../lib/supabase";
 import { Button, Input, Logo } from "../../components/ui";
-import { requestPushPermission } from "../../lib/native";
 
 export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: string) => void; setOtpEmail: (email: string) => void }) {
   const [fullName, setFullName] = useState("");
@@ -13,12 +11,11 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState("");
-  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
-  const [verificationRoute, setVerificationRoute] = useState("verify-otp");
 
   const passwordTooShort = password.length > 0 && password.length < 6;
 
@@ -36,40 +33,26 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match"); return; }
     if (usernameAvailable === false) { setError("Username is already taken"); return; }
+    if (!consent) { setError("Please read and accept the Privacy Policy and Terms & Conditions to continue."); return; }
 
     setLoading(true);
     const normalizedEmail = email.trim().toLowerCase();
-    const result = await callEmailFunction({ action: "register", fullName, username, email: normalizedEmail, password });
+    const result = await callEmailFunction({ action: "register", fullName, username, email: normalizedEmail, password, consentAccepted: true });
     setLoading(false);
 
     if (result.ok) {
       setOtpEmail(normalizedEmail);
-      continueRegistration("verify-otp");
+      onNavigate("verify-otp");
       return;
     }
     if (result.code === "send_failed") {
       setOtpEmail(normalizedEmail);
-      continueRegistration("verify-otp?sendFailed=1");
+      onNavigate("verify-otp?sendFailed=1");
       return;
     }
     if (result.code === "unverified") setUnverifiedEmail(normalizedEmail);
     if (result.code === "username_taken") setUsernameAvailable(false);
     setError(result.error);
-  };
-
-  const continueRegistration = (route: string) => {
-    setVerificationRoute(route);
-    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
-      onNavigate(route);
-      return;
-    }
-    setShowNotificationPrompt(true);
-  };
-
-  const finishRegistration = async (allowNotifications: boolean) => {
-    setShowNotificationPrompt(false);
-    if (allowNotifications) await requestPushPermission();
-    onNavigate(verificationRoute);
   };
 
   return (
@@ -116,9 +99,20 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
               </button>
             </div>
             <Input label="Confirm Password" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={setConfirmPassword} placeholder="Re-enter password" icon={<Lock className="w-4 h-4" />} required />
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-              <p className="text-xs text-slate-600">New accounts start with a wallet balance of <span className="font-semibold text-navy-900">₦0</span>. Fund your wallet after registration to start buying numbers.</p>
-            </div>
+            <label className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 w-4 h-4 flex-shrink-0 accent-royal-600"
+              />
+              <span className="text-xs text-slate-600 leading-relaxed">
+                I have read and agree to the{" "}
+                <Link to="/privacy" target="_blank" className="font-semibold text-royal-600 hover:text-royal-700 underline underline-offset-2">Privacy Policy</Link>
+                {" "}and{" "}
+                <Link to="/terms" target="_blank" className="font-semibold text-royal-600 hover:text-royal-700 underline underline-offset-2">Terms &amp; Conditions</Link>.
+              </span>
+            </label>
             <Button type="submit" className="w-full" loading={loading} disabled={loading}>
               {loading ? "Creating account..." : "Create Account"}{!loading && <ArrowRight className="w-4 h-4" />}
             </Button>
@@ -126,27 +120,8 @@ export function RegisterPage({ onNavigate, setOtpEmail }: { onNavigate: (page: s
           <div className="mt-6 text-center text-sm text-slate-600">
             Already have an account? <button onClick={() => onNavigate("login")} className="text-royal-600 hover:text-royal-700 font-semibold">Sign in</button>
           </div>
-          <p className="mt-4 text-center text-xs leading-5 text-slate-500">
-            By creating an account, you acknowledge our{" "}
-            <Link to="/privacy-policy" className="font-semibold text-royal-600 hover:text-royal-700">Privacy Policy</Link>.
-          </p>
         </div>
       </div>
-      {showNotificationPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/60 p-4" role="dialog" aria-modal="true" aria-labelledby="notification-prompt-title">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-royal-100 text-royal-600">
-              <Bell className="h-6 w-6" />
-            </div>
-            <h2 id="notification-prompt-title" className="text-lg font-bold text-navy-900">Get your verification codes</h2>
-            <p className="mt-2 text-sm text-slate-500">Allow notifications to know when an SMS code arrives for your number.</p>
-            <div className="mt-5 flex justify-center gap-3">
-              <Button variant="outline" onClick={() => void finishRegistration(false)}>Deny</Button>
-              <Button onClick={() => void finishRegistration(true)}>Allow</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

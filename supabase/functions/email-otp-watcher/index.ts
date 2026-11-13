@@ -13,12 +13,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Watcher-Secret",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
 const MAILOTP_API_KEY = Deno.env.get("MAILOTP_API_KEY") ?? "";
 const MAILOTP_BASE = "https://api.mailotp.org";
-const WATCHER_SECRET = Deno.env.get("EMAIL_OTP_WATCHER_SECRET") ?? "";
 
 // The customer-facing window is 5 minutes. A short grace period beyond the
 // provider's own TTL lets a last-second delivery land before we force-cancel.
@@ -45,14 +44,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (!WATCHER_SECRET) {
-    console.error("[email-otp-watcher] EMAIL_OTP_WATCHER_SECRET is not configured");
-    return jsonResponse({ error: "Watcher is not configured" }, 503);
-  }
-  if (req.headers.get("x-watcher-secret") !== WATCHER_SECRET) {
-    return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
   const supabaseAdmin = createClient(
@@ -86,51 +77,14 @@ Deno.serve(async (req: Request) => {
       stats.checked += 1;
       try {
         if (!row.mailotp_task_id) {
-          const ageMs = Date.now() - Date.parse(row.created_at);
-          if (!Number.isFinite(ageMs) || ageMs < EXPIRY_MS + GRACE_MS) {
-            stats.skipped += 1;
-            continue;
-          }
-
-          // A taskless row can be left behind if provisioning failed after the
-          // wallet debit. Recover the debit by its idempotent reference so the
-          // watcher can retry a refund instead of silently expiring the order.
-          const { data: debit, error: debitError } = await supabaseAdmin
-            .from("transactions")
-            .select("amount")
-            .eq("user_id", row.user_id)
-            .eq("type", "purchase")
-            .eq("status", "completed")
-            .eq("reference", `mo_charge_${row.id}`)
-            .maybeSingle();
-          if (debitError) {
-            noteError(`debit lookup ${row.id}: ${debitError.message}`);
-            continue;
-          }
-          const charge = Number(row.charge_naira ?? 0) || Number(debit?.amount ?? 0);
-          if (charge > 0) {
-            const { error: refundError } = await supabaseAdmin.rpc("refund_wallet_for_user", {
-              p_user_id: row.user_id,
-              p_amount: charge,
-              p_reference: `mo_refund_${row.id}`,
-              p_description: "Refund: email purchase could not be completed",
-            });
-            if (refundError) {
-              noteError(`refund ${row.id}: ${refundError.message}`);
-              continue;
-            }
-          }
-
+          // No provider task was ever attached: the buy flow always deletes
+          // these on failure, so a leftover row is a data anomaly. Nothing was
+          // charged (the charge happens only after a task exists), so just
+          // settle it without a refund.
           const { error } = await supabaseAdmin.rpc("settle_email_otp_order", {
             p_order_id: row.id, p_user_id: row.user_id, p_status: "expired", p_refund_reference: null,
           });
           if (error) { noteError(`settle ${row.id}: ${error.message}`); continue; }
-          if (charge > 0) {
-            await supabaseAdmin.from("notifications").insert({
-              user_id: row.user_id, type: "email_otp", title: "Refund Completed",
-              message: `Your ₦${charge} was refunded to your wallet because the email order could not be completed.`,
-            });
-          }
           stats.expired += 1;
           continue;
         }
@@ -155,7 +109,7 @@ Deno.serve(async (req: Request) => {
         // A code landed after all — record it and leave the order alone.
         const code = task?.result?.code ? String(task.result.code).trim() : "";
         if (code) {
-          const { error: recordError } = await supabaseAdmin.rpc("record_email_otp_code", {
+          await supabaseAdmin.rpc("record_email_otp_code", {
             p_order_id: row.id,
             p_user_id: row.user_id,
             p_code: code,
@@ -164,10 +118,6 @@ Deno.serve(async (req: Request) => {
             p_provider_received_at: task.result.received_at ?? new Date().toISOString(),
             p_was_free_repeat: Number(task.price) === 0,
           });
-          if (recordError) {
-            noteError(`record code ${row.id}: ${recordError.message}`);
-            continue;
-          }
           await supabaseAdmin.from("notifications").insert({
             user_id: row.user_id, type: "email_otp", title: "Email OTP Received",
             message: `A code arrived for your ${row.service} email address.`,

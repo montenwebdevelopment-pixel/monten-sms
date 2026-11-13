@@ -148,6 +148,7 @@ async function handleRegister(body: Record<string, unknown>) {
   if (!USERNAME_RE.test(username)) return fail(400, "Username must be 3-24 characters: letters, numbers, dots, dashes or underscores.");
   if (!EMAIL_RE.test(email)) return fail(400, "Please enter a valid email address.");
   if (password.length < 6 || password.length > 72) return fail(400, "Password must be between 6 and 72 characters.");
+  if (body.consentAccepted !== true) return fail(400, "Please read and accept the Privacy Policy and Terms & Conditions to continue.", "consent_required");
 
   const existingId = await findUserId(email);
   if (existingId) {
@@ -163,18 +164,25 @@ async function handleRegister(body: Record<string, unknown>) {
   if (takenError) throw takenError;
   if (taken && taken.length > 0) return fail(409, "That username is already taken.", "username_taken");
 
-  const { error: createError } = await supabase.auth.admin.createUser({
+  const first = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: false,
     user_metadata: { full_name: fullName, username },
   });
-  if (createError) {
-    const msg = createError.message.toLowerCase();
-    console.error(`[send-otp] createUser failed for ${maskEmail(email)}: ${createError.message} (code=${createError.code ?? "?"})`);
+  if (first.error) {
+    const msg = first.error.message.toLowerCase();
+    console.error(`[send-otp] createUser failed for ${maskEmail(email)}: ${first.error.message} (code=${first.error.code ?? "?"})`);
     if (msg.includes("already")) return fail(409, "An account with this email already exists. Please sign in instead.", "exists");
-    if (msg.includes("password")) return fail(400, "That password has been found in a known data breach. Please choose a different one.", "weak_password");
+    if (msg.includes("password")) return fail(400, "That password appears in public breach lists, so it isn't allowed while leak protection is enabled. Please pick a less common password.", "weak_password");
     return fail(500, "We couldn't create your account. Please try again.");
+  }
+
+  try {
+    const userId = first.data.user.id;
+    await supabase.from("consent_records").insert({ user_id: userId, email, user_agent: String(body.userAgent ?? "").slice(0, 300) });
+  } catch (consentErr) {
+    console.error("[send-otp] Consent record failed (account still created):", consentErr instanceof Error ? consentErr.message : consentErr);
   }
 
   try {

@@ -5,6 +5,7 @@ import { App as CapApp } from "@capacitor/app";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LandingPage } from "./pages/LandingPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { TermsPage } from "./pages/TermsPage";
 import { AccountDeletionPage } from "./pages/AccountDeletionPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
@@ -19,6 +20,8 @@ import { TransactionsPage } from "./pages/dashboard/TransactionsPage";
 import { PurchasedNumbersPage } from "./pages/dashboard/PurchasedNumbersPage";
 import { NotificationsPage } from "./pages/dashboard/NotificationsPage";
 import { ProfilePage } from "./pages/dashboard/ProfilePage";
+import { ProfileHubPage } from "./pages/dashboard/ProfileHubPage";
+import { DeveloperDashboard } from "./pages/dashboard/DeveloperDashboard";
 import { SupportPage } from "./pages/dashboard/SupportPage";
 import { EmailOtpPage } from "./pages/dashboard/EmailOtpPage";
 import { DashboardHomeNative } from "./pages/dashboard/DashboardHomeNative";
@@ -67,11 +70,6 @@ function DashboardRouter() {
     navigate(`/dashboard/${p}`);
   };
 
-  const handleQuickPurchase = (serviceCode: string) => {
-    setPage("buy-numbers");
-    navigate("/dashboard/buy-numbers", { state: { quickPurchaseService: serviceCode } });
-  };
-
   // Android/iOS builds show the original app dashboard; the website keeps the
   // newer web dashboard.
   const native = isNativeApp();
@@ -79,7 +77,7 @@ function DashboardRouter() {
   return (
     <DashboardLayout current={page} onNavigate={handleNavigate}>
       {page === "dashboard" && (native
-        ? <DashboardHomeNative onNavigate={handleNavigate} onQuickPurchase={handleQuickPurchase} />
+        ? <DashboardHomeNative onNavigate={handleNavigate} />
         : <DashboardHome onNavigate={handleNavigate} />)}
       {(page === "buy-numbers" || page === "services") && <BuyNumbersPage />}
       {page === "email-otp" && <EmailOtpPage />}
@@ -88,7 +86,9 @@ function DashboardRouter() {
       {(page === "purchased-numbers" || page === "active-numbers") && <PurchasedNumbersPage view={page === "active-numbers" ? "active" : "all"} />}
       {page === "sms-inbox" && <PurchasedNumbersPage view="inbox" />}
       {page === "notifications" && <NotificationsPage />}
-      {(page === "profile" || page === "account-settings") && <ProfilePage />}
+      {page === "profile" && <ProfileHubPage />}
+      {page === "developer" && <DeveloperDashboard />}
+      {page === "account-settings" && <ProfilePage />}
       {page === "support" && <SupportPage />}
     </DashboardLayout>
   );
@@ -97,16 +97,6 @@ function DashboardRouter() {
 function AuthFlow() {
   const [otpEmail, setOtpEmail] = useState("");
   const navigate = useNavigate();
-  const location = useLocation();
-  const { session } = useAuth();
-
-  if (
-    isNativeApp() &&
-    session &&
-    ["/login", "/register", "/forgot-password"].includes(location.pathname)
-  ) {
-    return <Navigate to="/dashboard/dashboard" replace />;
-  }
 
   const handleNavigate = (page: string) => navigate(`/${page}`);
 
@@ -123,8 +113,6 @@ function AuthFlow() {
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session, loading } = useAuth();
-  const native = isNativeApp();
   usePushNotifications();
 
   useEffect(() => {
@@ -141,23 +129,12 @@ function AppRoutes() {
     };
   }, [location.pathname, navigate]);
 
-  if (native && loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Spinner className="w-8 h-8 text-royal-600" />
-      </div>
-    );
-  }
-
   return (
     <>
       <Routes>
-        <Route
-          path="/"
-          element={native ? <Navigate to={session ? "/dashboard/dashboard" : "/login"} replace /> : <LandingPage />}
-        />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
-        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route path="/delete-account" element={<AccountDeletionPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         <Route path="/admin/apk-upload" element={<ApkUploadPage />} />

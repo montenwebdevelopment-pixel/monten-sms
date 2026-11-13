@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowDownLeft, ArrowRight, ArrowUpRight, Bell, Bot, Check, ChevronRight,
-  Clock3, MessageCircle, Plus, RefreshCw, Send, ShieldCheck, ShoppingBag,
-  Smartphone, Wallet,
+  Wallet, ChevronRight, Smartphone, MessageCircle, Send, Bot,
+  ShoppingBag, RefreshCw, ArrowDownLeft,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { formatDate, formatNaira } from "../../lib/format";
+import { formatNaira, formatDate } from "../../lib/format";
+import { Card } from "../../components/ui";
 import { useDashboardRefreshKey, type DashboardPage } from "../../components/DashboardLayout";
 import type { Transaction } from "../../types";
 
@@ -20,43 +20,11 @@ type ActiveNumber = {
   expires_at: string | null;
 };
 
-type DashboardStats = {
-  totalPurchases: number | null;
-  totalSpent: number | null;
-};
-
 const quickPurchase = [
-  { code: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "bg-emerald-50 text-emerald-700" },
-  { code: "telegram", label: "Telegram", icon: Send, color: "bg-sky-50 text-sky-700" },
-  { code: "openai", label: "OpenAI", icon: Bot, color: "bg-violet-50 text-violet-700" },
+  { code: "whatsapp", label: "WhatsApp", icon: MessageCircle, style: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" },
+  { code: "telegram", label: "Telegram", icon: Send, style: "bg-sky-50 text-sky-700 hover:bg-sky-100" },
+  { code: "openai", label: "OpenAI", icon: Bot, style: "bg-slate-100 text-slate-800 hover:bg-slate-200" },
 ];
-
-async function loadPurchaseStats(since: string) {
-  const pageSize = 500;
-  let offset = 0;
-  let count: number | null = null;
-  let totalSpent = 0;
-
-  while (true) {
-    const { data, error, count: pageCount } = await supabase
-      .from("transactions")
-      .select("amount", { count: offset === 0 ? "exact" : undefined })
-      .eq("type", "purchase")
-      .eq("status", "completed")
-      .gte("created_at", since)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
-    if (error) return { count: null, totalSpent: 0, error };
-
-    if (offset === 0) count = pageCount;
-    for (const row of data ?? []) totalSpent += Number(row.amount);
-    if (!data || data.length < pageSize) break;
-    offset += pageSize;
-  }
-
-  return { count, totalSpent, error: null };
-}
 
 function ActiveCountdown({ expiresAt, createdAt }: { expiresAt: string | null; createdAt: string }) {
   const target = expiresAt ?? new Date(new Date(createdAt).getTime() + 5 * 60 * 1000).toISOString();
@@ -65,313 +33,193 @@ function ActiveCountdown({ expiresAt, createdAt }: { expiresAt: string | null; c
   useEffect(() => {
     const tick = () => setRemaining(Math.max(0, Math.ceil((Date.parse(target) - Date.now()) / 1000)));
     tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
+    const t = window.setInterval(tick, 1000);
+    return () => window.clearInterval(t);
   }, [target]);
 
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ${remaining > 0 ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
-      <Clock3 className="h-3.5 w-3.5" />
-      {remaining > 0 ? `${minutes}:${String(seconds).padStart(2, "0")} left` : "Expired"}
+    <span className="text-xs font-semibold text-royal-600 flex-shrink-0">
+      {mins}:{String(secs).padStart(2, "0")}
     </span>
   );
 }
 
-function SectionTitle({
-  title,
-  subtitle,
-  action,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: { label: string; onClick: () => void };
-}) {
-  return (
-    <div className="mb-4 flex items-end justify-between gap-3">
-      <div>
-        <h2 className="text-base font-bold tracking-tight text-slate-900">{title}</h2>
-        {subtitle && <p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p>}
-      </div>
-      {action && (
-        <button
-          type="button"
-          onClick={action.onClick}
-          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-royal-700 transition-colors hover:bg-royal-50"
-        >
-          {action.label}
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-export function DashboardHomeNative({
-  onNavigate,
-  onQuickPurchase,
-}: {
-  onNavigate: (page: DashboardPage) => void;
-  onQuickPurchase: (serviceCode: string) => void;
-}) {
+export function DashboardHomeNative({ onNavigate }: { onNavigate: (page: DashboardPage) => void }) {
   const { profile } = useAuth();
   const refreshKey = useDashboardRefreshKey();
   const [recentTxns, setRecentTxns] = useState<Transaction[]>([]);
   const [activeNumbers, setActiveNumbers] = useState<ActiveNumber[]>([]);
-  const [stats, setStats] = useState<DashboardStats>({ totalPurchases: null, totalSpent: null });
-  const [loading, setLoading] = useState(true);
-  const [loadErrors, setLoadErrors] = useState({ transactions: false, purchases: false, activeNumbers: false });
+  const [stats, setStats] = useState({ totalPurchases: 0, totalSpent: 0 });
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadErrors({ transactions: false, purchases: false, activeNumbers: false });
-
-    void (async () => {
-      try {
-        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const [txns, purchases, waiting] = await Promise.all([
-          supabase.from("transactions").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(5),
-          loadPurchaseStats(since),
-          supabase.from("purchased_numbers").select("id, phone_number, service_name, country_name, country_code, created_at, expires_at").eq("status", "waiting").order("created_at", { ascending: false }).limit(3),
-        ]);
-        if (txns.error) console.error("[dashboard-native] recent transactions request failed", txns.error);
-        if (purchases.error) console.error("[dashboard-native] weekly purchases request failed", purchases.error);
-        if (waiting.error) console.error("[dashboard-native] active numbers request failed", waiting.error);
-        if (!active) return;
-
-        setRecentTxns((txns.data ?? []) as Transaction[]);
-        setActiveNumbers((waiting.data ?? []) as ActiveNumber[]);
-        setStats({
-          totalPurchases: purchases.error ? null : purchases.count,
-          totalSpent: purchases.error ? null : purchases.totalSpent,
-        });
-        setLoadErrors({
-          transactions: Boolean(txns.error),
-          purchases: Boolean(purchases.error),
-          activeNumbers: Boolean(waiting.error),
-        });
-      } catch (error) {
-        console.error("[dashboard-native] dashboard data request failed", error);
-        if (!active) return;
-        setRecentTxns([]);
-        setActiveNumbers([]);
-        setStats({ totalPurchases: null, totalSpent: null });
-        setLoadErrors({ transactions: true, purchases: true, activeNumbers: true });
-      } finally {
-        if (active) setLoading(false);
-      }
+    (async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [txns, purchases, waiting] = await Promise.all([
+        supabase.from("transactions").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(5),
+        supabase.from("transactions").select("amount", { count: "exact" }).eq("type", "purchase").eq("status", "completed").gte("created_at", since),
+        supabase.from("purchased_numbers").select("id, phone_number, service_name, country_name, country_code, created_at, expires_at").eq("status", "waiting").order("created_at", { ascending: false }).limit(3),
+      ]);
+      if (txns.error) console.error("[dashboard-native] recent transactions request failed", txns.error);
+      if (purchases.error) console.error("[dashboard-native] weekly purchases request failed", purchases.error);
+      if (waiting.error) console.error("[dashboard-native] active numbers request failed", waiting.error);
+      const purchaseRows = purchases.data ?? [];
+      setRecentTxns((txns.data ?? []) as Transaction[]);
+      setActiveNumbers((waiting.data ?? []) as ActiveNumber[]);
+      setStats({
+        totalPurchases: purchases.count ?? purchaseRows.length,
+        totalSpent: purchaseRows.reduce((sum, row) => sum + Number(row.amount), 0),
+      });
     })();
-
-    return () => {
-      active = false;
-    };
   }, [refreshKey]);
 
-  const greeting = new Date().getHours() < 12
-    ? "Good morning"
-    : new Date().getHours() < 18
-      ? "Good afternoon"
-      : "Good evening";
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0];
-  const today = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
+  const txnIcon = (type: string) =>
+    type === "deposit" ? <ArrowDownLeft className="w-4 h-4" />
+    : type === "refund" ? <RefreshCw className="w-4 h-4" />
+    : <ShoppingBag className="w-4 h-4" />;
 
   return (
-    <div className="-mx-4 -mt-4 min-h-full bg-[#f4f6fb] px-4 pb-8 pt-5 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-7">
-      <div className="mx-auto max-w-2xl animate-fade-in">
-        <header className="mb-5 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-royal-700">{today}</p>
-            <h1 className="mt-1 text-[25px] font-extrabold leading-tight tracking-tight text-slate-950">
-              {greeting}{firstName ? `, ${firstName}` : ""}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">Here’s your account at a glance.</p>
+    <div className="animate-fade-in">
+      <div className="mb-6">
+        <p className="text-sm font-semibold text-royal-600">MONTEN SMS</p>
+        <h1 className="text-2xl font-bold text-navy-900 mt-1">Last 7 days</h1>
+        <p className="text-sm text-slate-500 mt-1">Your recent number purchases and transactions.</p>
+      </div>
+
+      <Card className="mb-6 overflow-hidden bg-gradient-to-r from-navy-900 to-royal-800 p-5 text-white sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-white/75">
+              <Wallet className="h-4 w-4" /> Wallet Balance
+            </div>
+            <p className="mt-1 text-3xl font-bold">{formatNaira(profile?.wallet_balance ?? 0)}</p>
           </div>
           <button
             type="button"
-            onClick={() => onNavigate("notifications")}
-            aria-label="View notifications"
-            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white bg-white text-slate-700 shadow-sm transition-transform active:scale-95"
+            onClick={() => onNavigate("fund-wallet")}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-navy-900 transition-base hover:bg-slate-100"
           >
-            <Bell className="h-5 w-5" />
+            <Wallet className="h-4 w-4" /> Fund Wallet
           </button>
-        </header>
+        </div>
+      </Card>
 
-        <section className="relative mb-5 overflow-hidden rounded-[26px] bg-gradient-to-br from-[#101a35] via-[#172b58] to-[#244ca0] p-5 text-white shadow-[0_16px_40px_-18px_rgba(24,52,111,0.65)] sm:p-6">
-          <div aria-hidden="true" className="absolute -right-14 -top-20 h-56 w-56 rounded-full bg-blue-400/15 blur-3xl" />
-          <div aria-hidden="true" className="absolute -bottom-24 right-16 h-44 w-44 rounded-full bg-indigo-300/10 blur-3xl" />
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <p className="inline-flex items-center gap-2 text-xs font-medium text-blue-100/85">
-                <Wallet className="h-4 w-4" />
-                Wallet balance
-              </p>
-              <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] text-blue-100">
-                NGN
+      <Card className="mb-6 p-5 sm:p-6">
+        <div className="mb-4">
+          <h2 className="font-bold text-navy-900">Quick Purchase</h2>
+          <p className="mt-1 text-sm text-slate-500">Jump straight to available offers for a popular service.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {quickPurchase.map(({ code, label, icon: Icon, style }) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => onNavigate("buy-numbers")}
+              className={`flex min-h-14 items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-base ${style}`}
+            >
+              <span className="flex items-center gap-3">
+                <Icon className="h-5 w-5" /> {label}
               </span>
-            </div>
-            <p className="mt-3 text-[34px] font-extrabold leading-none tracking-tight tabular-nums sm:text-[38px]">
-              {formatNaira(profile?.wallet_balance ?? 0)}
-            </p>
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-white/15 pt-4">
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-blue-100/80">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Available to spend
-              </span>
-              <button
-                type="button"
-                onClick={() => onNavigate("fund-wallet")}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-slate-900 shadow-sm transition-all hover:bg-blue-50 active:scale-[0.98]"
-              >
-                <Plus className="h-4 w-4" />
-                Fund wallet
-              </button>
-            </div>
-          </div>
-        </section>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+      </Card>
 
-        <section className="mb-6 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white bg-white p-4 shadow-[0_4px_18px_-12px_rgba(15,23,42,0.24)]">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-              <ShoppingBag className="h-[18px] w-[18px]" />
-            </div>
-            <p className="text-[11px] font-medium leading-4 text-slate-500">Numbers purchased</p>
-            <p className="mt-1 text-xl font-extrabold tracking-tight text-slate-900">
-              {loading ? <span className="text-slate-300">—</span> : stats.totalPurchases ?? "—"}
-            </p>
-            <p className="mt-0.5 text-[10px] font-medium text-slate-400">Last 7 days</p>
+      <Card className="mb-6 p-5 sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-navy-900">Active Numbers</h2>
+            <p className="mt-1 text-sm text-slate-500">Numbers currently waiting for an SMS code.</p>
           </div>
-          <div className="rounded-2xl border border-white bg-white p-4 shadow-[0_4px_18px_-12px_rgba(15,23,42,0.24)]">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-              <Wallet className="h-[18px] w-[18px]" />
-            </div>
-            <p className="text-[11px] font-medium leading-4 text-slate-500">Total spent</p>
-            <p className="mt-1 truncate text-xl font-extrabold tracking-tight text-slate-900">
-              {loading ? <span className="text-slate-300">—</span> : stats.totalSpent === null ? "—" : formatNaira(stats.totalSpent)}
-            </p>
-            <p className="mt-0.5 text-[10px] font-medium text-slate-400">Last 7 days</p>
-          </div>
-        </section>
-        {!loading && loadErrors.purchases && (
-          <p role="status" className="-mt-4 mb-5 text-xs text-amber-700">Weekly purchase totals couldn’t be loaded.</p>
-        )}
-
-        <section className="mb-6">
-          <SectionTitle
-            title="Quick purchase"
-            subtitle="Jump back into a popular service."
-            action={{ label: "Browse", onClick: () => onNavigate("buy-numbers") }}
-          />
-          <div className="grid grid-cols-3 gap-2.5">
-            {quickPurchase.map(({ code, label, icon: Icon, color }) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => onQuickPurchase(code)}
-                className="group flex min-h-[96px] flex-col items-start justify-between rounded-2xl border border-white bg-white p-3.5 text-left shadow-[0_4px_18px_-12px_rgba(15,23,42,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
-              >
-                <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${color}`}>
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="flex w-full items-center justify-between gap-1 text-xs font-bold text-slate-800">
-                  {label}
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-400 transition-transform group-hover:translate-x-0.5" />
-                </span>
-              </button>
+          <Smartphone className="h-5 w-5 text-royal-600" />
+        </div>
+        {activeNumbers.length === 0 ? (
+          <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No active numbers right now.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {activeNumbers.map((num) => (
+              <div key={num.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-navy-900">{num.phone_number || "Number pending"}</p>
+                  <p className="mt-0.5 text-xs capitalize text-slate-500">{num.service_name} · {num.country_name || num.country_code}</p>
+                </div>
+                <ActiveCountdown expiresAt={num.expires_at} createdAt={num.created_at} />
+              </div>
             ))}
           </div>
-        </section>
+        )}
+        <button
+          type="button"
+          onClick={() => onNavigate("purchased-numbers")}
+          className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-royal-600 hover:text-royal-700"
+        >
+          View active numbers <ChevronRight className="h-4 w-4" />
+        </button>
+      </Card>
 
-        <section className="mb-6 rounded-2xl border border-white bg-white p-4 shadow-[0_4px_18px_-12px_rgba(15,23,42,0.24)] sm:p-5">
-          <SectionTitle
-            title="Active numbers"
-            subtitle="Waiting for a verification code."
-            action={{ label: "View all", onClick: () => onNavigate("purchased-numbers") }}
-          />
-          {loading ? (
-            <div className="space-y-2" aria-label="Loading active numbers">
-              {[0, 1].map((item) => <div key={item} className="h-[68px] animate-pulse rounded-xl bg-slate-50" />)}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-success-100 flex items-center justify-center">
+              <ShoppingBag className="w-5 h-5 text-success-600" />
             </div>
-          ) : loadErrors.activeNumbers ? (
-            <p role="status" className="rounded-xl bg-amber-50 px-3 py-4 text-center text-xs text-amber-800">Active numbers couldn’t be loaded. Pull down to refresh.</p>
-          ) : activeNumbers.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 px-4 py-6 text-center">
-              <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm">
-                <Smartphone className="h-5 w-5" />
-              </span>
-              <p className="mt-2 text-sm font-semibold text-slate-700">No active numbers</p>
-              <p className="mt-1 text-xs text-slate-500">Your numbers waiting for a code will show here.</p>
+            <div>
+              <p className="text-xs text-slate-500">Numbers Purchased (7 days)</p>
+              <p className="text-lg font-bold text-navy-900">{stats.totalPurchases}</p>
             </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {activeNumbers.map((number) => (
-                <div key={number.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-royal-50 text-royal-700">
-                    <Smartphone className="h-[18px] w-[18px]" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-slate-900">{number.phone_number || "Number pending"}</p>
-                    <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
-                      {[number.service_name, number.country_name || number.country_code].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                  <ActiveCountdown expiresAt={number.expires_at} createdAt={number.created_at} />
-                </div>
-              ))}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-warning-100 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-warning-600" />
             </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-white bg-white p-4 shadow-[0_4px_18px_-12px_rgba(15,23,42,0.24)] sm:p-5">
-          <SectionTitle
-            title="Recent transactions"
-            subtitle="Your latest wallet activity · 7 days"
-            action={{ label: "See all", onClick: () => onNavigate("transactions") }}
-          />
-          {loading ? (
-            <div className="space-y-2" aria-label="Loading recent transactions">
-              {[0, 1, 2].map((item) => <div key={item} className="h-[58px] animate-pulse rounded-xl bg-slate-50" />)}
+            <div>
+              <p className="text-xs text-slate-500">Total Spent (7 days)</p>
+              <p className="text-lg font-bold text-navy-900">{formatNaira(stats.totalSpent)}</p>
             </div>
-          ) : loadErrors.transactions ? (
-            <p role="status" className="rounded-xl bg-amber-50 px-3 py-4 text-center text-xs text-amber-800">Recent transactions couldn’t be loaded. Pull down to refresh.</p>
-          ) : recentTxns.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm font-semibold text-slate-700">Nothing to show yet</p>
-              <p className="mt-1 text-xs text-slate-500">Transactions from the last 7 days will appear here.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {recentTxns.map((transaction) => {
-                const isCredit = transaction.type === "deposit" || transaction.type === "refund";
-                const Icon = transaction.type === "deposit" ? ArrowDownLeft : transaction.type === "refund" ? RefreshCw : ArrowUpRight;
-                const isComplete = transaction.status === "completed";
-                return (
-                  <div key={transaction.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isCredit ? "bg-emerald-50 text-emerald-700" : "bg-royal-50 text-royal-700"}`}>
-                      <Icon className="h-[18px] w-[18px]" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold capitalize text-slate-900">{transaction.description || transaction.type}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">{formatDate(transaction.created_at)}</p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className={`text-sm font-extrabold tabular-nums ${isCredit ? "text-emerald-700" : "text-slate-900"}`}>
-                        {isCredit ? "+" : "−"}{formatNaira(transaction.amount)}
-                      </p>
-                      <span className={`mt-1 inline-flex items-center gap-1 text-[10px] font-semibold ${isComplete ? "text-emerald-700" : transaction.status === "pending" ? "text-amber-700" : "text-slate-400"}`}>
-                        {isComplete && <Check className="h-3 w-3" />}
-                        {transaction.status}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+          </div>
+        </Card>
       </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-navy-900">Recent Transactions (7 days)</h2>
+          <button
+            onClick={() => onNavigate("transactions")}
+            className="text-sm text-royal-600 hover:text-royal-700 font-medium inline-flex items-center gap-1"
+          >
+            View All <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        {recentTxns.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-8">No transactions in the last 7 days.</p>
+        ) : (
+          <div className="space-y-3">
+            {recentTxns.map((txn) => {
+              const isCredit = txn.type === "deposit" || txn.type === "refund";
+              return (
+                <div key={txn.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isCredit ? "bg-success-100 text-success-600" : "bg-royal-100 text-royal-600"}`}>
+                      {txnIcon(txn.type)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-navy-900 capitalize">{txn.type}</p>
+                      <p className="text-xs text-slate-400">{formatDate(txn.created_at)}</p>
+                    </div>
+                  </div>
+                  <p className={`text-sm font-bold flex-shrink-0 ${isCredit ? "text-success-600" : "text-navy-900"}`}>
+                    {isCredit ? "+" : "-"}{formatNaira(txn.amount)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { supabase, EDGE_FUNCTION_BASE } from "../../lib/supabase";
 import { formatDate, formatNaira } from "../../lib/format";
 import { Card, EmptyState, Button } from "../../components/ui";
 import { PageHeader, useDashboardRefreshKey } from "../../components/DashboardLayout";
-import { notifyOtpReceived } from "../../lib/native";
 import type { PurchasedNumber } from "../../types";
 
 export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active" | "inbox" }) {
@@ -12,6 +11,7 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
   const refreshKey = useDashboardRefreshKey();
 
@@ -31,21 +31,34 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
     }
   };
 
+  const visibleNumbers = numbers.filter((number) => (
+    view === "active" ? number.status === "waiting"
+      : view === "inbox" ? number.status === "received"
+        : true
+  ));
+  const title = view === "active" ? "Active Numbers" : view === "inbox" ? "SMS Inbox" : "Purchased Numbers";
+  const subtitle = view === "inbox" ? "View SMS verification codes received on your numbers" : "Manage your purchased phone numbers and OTPs";
+
   const handleCopy = (text: string, id: string) => { navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); };
 
   const handleCheckSMS = async (number: PurchasedNumber) => {
     if (!number.fivesim_id) return;
     setCheckingId(number.id);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/sms/${number.fivesim_id}`, { headers: { Authorization: `Bearer ${session.session?.access_token}` } });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error ?? `SMS check failed (${resp.status})`);
-      if (data.status === "received" && typeof data.smsCode === "string" && data.smsCode.trim()) {
-        void notifyOtpReceived(number.fivesim_id);
-      }
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) throw error ?? new Error("Your session has expired. Please sign in again.");
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/sms/${encodeURIComponent(number.fivesim_id)}`, {
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      });
+      const result = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(result?.error ?? `SMS check failed (${resp.status})`);
       // The server records the SMS/status change; just refresh from the server.
-      await fetchNumbers();
+      if (result?.status === "received" || result?.status === "canceled" || result?.status === "failed") {
+        await fetchNumbers();
+      }
     } catch (error) {
       console.error("[purchased-numbers] SMS check failed", error);
       setActionError("We couldn't check for your SMS right now. Please try again.");
@@ -56,25 +69,27 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
 
   const handleCancel = async (number: PurchasedNumber) => {
     if (!number.fivesim_id) return;
-    setActionError("");
+    setCancellingId(number.id);
     try {
-    const { data: session } = await supabase.auth.getSession();
-    const cancelResponse = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/cancel/${number.fivesim_id}`, { method: "POST", headers: { Authorization: `Bearer ${session.session?.access_token}` } });
-    if (!cancelResponse.ok) throw new Error("Number cancellation failed.");
-    await fetchNumbers();
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) throw error ?? new Error("Your session has expired. Please sign in again.");
+      const resp = await fetch(`${EDGE_FUNCTION_BASE}/fivesim-proxy/cancel/${encodeURIComponent(number.fivesim_id)}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      });
+      const result = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(result?.error ?? `Number cancellation failed (${resp.status})`);
+      await fetchNumbers();
     } catch (error) {
       console.error("[purchased-numbers] cancel failed", error);
       setActionError("We couldn't cancel this number. Please try again.");
+    } finally {
+      setCancellingId(null);
     }
   };
-
-  const visibleNumbers = numbers.filter((number) => (
-    view === "active" ? number.status === "waiting"
-      : view === "inbox" ? number.status === "received"
-        : true
-  ));
-  const title = view === "active" ? "Active Numbers" : view === "inbox" ? "SMS Inbox" : "Purchased Numbers";
-  const subtitle = view === "inbox" ? "View SMS verification codes received on your numbers" : "Manage your purchased phone numbers and OTPs";
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, { bg: string; icon: any; label: string }> = {
@@ -116,7 +131,7 @@ export function PurchasedNumbersPage({ view = "all" }: { view?: "all" | "active"
                   <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0 justify-end">
                     {number.status === "waiting" && (<>
                       <Button variant="outline" className="text-xs min-h-[44px] flex-1 sm:flex-none" loading={checkingId === number.id} onClick={() => handleCheckSMS(number)}><RefreshCw className="w-3.5 h-3.5" /> Check SMS</Button>
-                      <Button variant="danger" className="text-xs min-h-[44px] flex-1 sm:flex-none" onClick={() => handleCancel(number)}><X className="w-3.5 h-3.5" /> Cancel</Button>
+                      <Button variant="danger" className="text-xs min-h-[44px] flex-1 sm:flex-none" loading={cancellingId === number.id} onClick={() => handleCancel(number)}><X className="w-3.5 h-3.5" /> Cancel</Button>
                     </>)}
                   </div>
                 </div>

@@ -32,7 +32,6 @@ export interface PurchasedNumber {
   cost_price: number | null;
   selling_price: number | null;
   status: "waiting" | "received" | "canceled" | "failed";
-  expires_at: string | null;
   sms_text: string | null;
   sms_code: string | null;
   created_at: string;

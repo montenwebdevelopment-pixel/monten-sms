@@ -4,16 +4,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b --noEmit && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "build:web": "npm run typecheck && vite build --mode web",
+    "build:android": "npm run typecheck && vite build --mode android",
+    "build:admin": "vite build --config admin-dashboard/vite.config.ts",
+    "build:admin:standalone": "vite build --config admin-dashboard/vite.config.ts --mode standalone",
+    "build": "npm run build:web && npm run build:admin",
     "preview": "vite preview",
-    "cap:sync": "npm run build && cap sync",
+    "cap:sync": "npm run build:android && cap sync",
     "cap:ios": "npm run cap:sync && cap open ios",
     "cap:android": "npm run cap:sync && cap open android"
   },
   "dependencies": {
-    "@aparajita/capacitor-secure-storage": "^8.0.1",
     "@capacitor/app": "^8.1.2",
-    "@capacitor/camera": "8.2.6",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.6.0",
     "@capacitor/local-notifications": "^8.3.1",

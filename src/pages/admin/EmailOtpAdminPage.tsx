@@ -29,7 +29,11 @@ export function EmailOtpAdminPage() {
 
   const getHeaders = async () => {
     const { data } = await supabase.auth.getSession();
-    return { Authorization: `Bearer ${data.session?.access_token ?? ""}`, "Content-Type": "application/json" };
+    return {
+      Authorization: `Bearer ${data.session?.access_token ?? ""}`,
+      "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
   };
 
   const loadAll = async () => {

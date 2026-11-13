@@ -31,6 +31,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+// On iOS, remote push needs an Apple Developer account with APNs configured,
+// so the shells fall back to scheduled local notifications for OTP alerts.
 function hasAndroidPromptBeenAttempted(): boolean {
   if (automaticAndroidPromptAttempted) return true;
   try {
@@ -129,19 +131,38 @@ export async function requestPushPermission(options: { automatic?: boolean } = {
   }
 }
 
+// The body deliberately omits the code so it is not shown on a locked screen.
 export async function notifyOtpReceived(otpId?: string): Promise<void> {
-  if (isNativeApp()) return;
-  if (otpId && notifiedOtpIds.has(otpId)) return;
-  if (otpId) {
-    notifiedOtpIds.add(otpId);
-    if (notifiedOtpIds.size > 100) {
-      const oldest = notifiedOtpIds.values().next().value;
-      if (oldest) notifiedOtpIds.delete(oldest);
+  if (!isNativeApp()) {
+    if (otpId && notifiedOtpIds.has(otpId)) return;
+    if (otpId) {
+      notifiedOtpIds.add(otpId);
+      if (notifiedOtpIds.size > 100) {
+        const oldest = notifiedOtpIds.values().next().value;
+        if (oldest) notifiedOtpIds.delete(oldest);
+      }
     }
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    new Notification("MONTEN SMS", { body: "Your verification code is ready. Open the app to view it." });
+    return;
   }
 
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  new Notification("MONTEN SMS", { body: "Your verification code is ready. Open the app to view it." });
+  try {
+    const status = await LocalNotifications.checkPermissions();
+    if (status.display !== "granted") return;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Date.now() % 2147483647,
+          title: "MONTEN SMS",
+          body: "Your verification code is ready. Open the app to view it.",
+          schedule: { at: new Date(Date.now() + 1000) },
+        },
+      ],
+    });
+  } catch {
+    // Notification failures must never break the OTP flow.
+  }
 }
 
 export async function registerPushDevice(token: string): Promise<void> {

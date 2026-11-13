@@ -89,6 +89,7 @@ export function ApkUploadPage() {
 
     xhr.open("POST", `${EDGE_FUNCTION_BASE}/apk-upload`);
     xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+    xhr.setRequestHeader("apikey", import.meta.env.VITE_SUPABASE_ANON_KEY);
     xhr.setRequestHeader("Content-Type", "application/vnd.android.package-archive");
     xhr.send(file);
     await promise;

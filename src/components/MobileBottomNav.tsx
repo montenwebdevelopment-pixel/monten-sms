@@ -21,7 +21,6 @@ const webItems: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
 
 export function MobileBottomNav({ current, onNavigate }: { current: DashboardPage; onNavigate: (page: DashboardPage) => void }) {
   const items = isNativeApp() ? nativeItems : webItems;
-
   return (
     <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 lg:hidden bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
       <ul className="grid grid-cols-4">
