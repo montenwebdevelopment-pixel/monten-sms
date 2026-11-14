@@ -1,0 +1,146 @@
+name: Admin Android Build
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/admin-android-build.yml"
+      - "admin-dashboard/**"
+      - "src/admin/**"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/admin-android-build.yml"
+      - "admin-dashboard/**"
+      - "src/admin/**"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-admin-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Supabase build configuration
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          const url = process.env.VITE_SUPABASE_URL;
+          const key = process.env.VITE_SUPABASE_ANON_KEY;
+          if (!url || !key) {
+            throw new Error("VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY GitHub secrets are required.");
+          }
+          new URL(url);
+          NODE
+
+      - name: Type-check Admin application
+        run: npx tsc --noEmit -p admin-dashboard/tsconfig.json
+
+      - name: Build Admin Android web assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npx vite build --config admin-dashboard/vite.config.ts --mode android
+
+      - name: Sync the separate Admin Capacitor project
+        working-directory: admin-dashboard
+        run: npx cap sync android
+
+      - name: Verify embedded Admin application
+        run: |
+          test -s admin-dashboard/android/app/src/main/assets/public/index.html
+          node --input-type=module <<'NODE'
+          import { readFileSync, readdirSync } from "node:fs";
+          import { resolve } from "node:path";
+
+          const webDir = "admin-dashboard/android/app/src/main/assets/public";
+          const html = readFileSync(resolve(webDir, "index.html"), "utf8");
+          const references = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]);
+          if (references.length < 2 || references.some((path) => !path.startsWith("./assets/"))) {
+            throw new Error("Admin Android HTML must use relative Admin-only web assets.");
+          }
+          for (const reference of references) {
+            readFileSync(resolve(webDir, reference));
+          }
+
+          const bundleText = readdirSync(resolve(webDir, "assets"))
+            .filter((name) => name.endsWith(".js"))
+            .map((name) => readFileSync(resolve(webDir, "assets", name), "utf8"))
+            .join("\n");
+          if (!bundleText.includes("Super Admin Portal")) {
+            throw new Error("The Admin login application is missing from the embedded Android bundle.");
+          }
+
+          const capacitorConfig = JSON.parse(
+            readFileSync("admin-dashboard/android/app/src/main/assets/capacitor.config.json", "utf8"),
+          );
+          if (capacitorConfig.appId !== "com.montensms.admin") {
+            throw new Error(`Unexpected Admin application ID: ${capacitorConfig.appId}`);
+          }
+          NODE
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Admin debug APK
+        working-directory: admin-dashboard/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Verify Admin APK identity and signature
+        run: |
+          set -euo pipefail
+          apk_path="admin-dashboard/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk_path"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk_path" > "$RUNNER_TEMP/admin-apk-badging.txt"
+          grep -Eq "^package: name='com\\.montensms\\.admin' versionCode='[1-9][0-9]*' versionName='[^']+' " "$RUNNER_TEMP/admin-apk-badging.txt"
+          grep -Fq "application-label:'Monten SMS Admin'" "$RUNNER_TEMP/admin-apk-badging.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk_path"
+          mkdir -p artifacts
+          cp "$apk_path" artifacts/monten-sms-admin.apk
+          test -s artifacts/monten-sms-admin.apk
+
+      - name: Upload Admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: monten-sms-admin-apk
+          path: artifacts/monten-sms-admin.apk
+          if-no-files-found: error

@@ -3,6 +3,13 @@ name: Android Play Store Release
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - ".github/workflows/android-build.yml"
+      - ".github/workflows/android-release.yml"
+      - ".github/workflows/admin-dashboard.yml"
+      - ".github/workflows/admin-android-build.yml"
+      - "admin-dashboard/**"
+      - "src/admin/**"
   workflow_dispatch:
 
 permissions:

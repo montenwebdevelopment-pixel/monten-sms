@@ -32,6 +32,25 @@ replace the customer site's root build.
 
 ## Android app releases
 
+The Admin Android project is separate from the customer Android project and is
+located in `admin-dashboard/android/`. With the root dependencies installed and
+the Supabase URL and anonymous key available in the environment, build its
+bundled Admin web app and synchronize its Capacitor project with:
+
+```sh
+npx vite build --config admin-dashboard/vite.config.ts --mode android
+cd admin-dashboard
+npx cap sync android
+cd android
+./gradlew assembleDebug
+```
+
+The Admin Android Build GitHub Actions workflow builds only this project and
+publishes a debug APK artifact named `monten-sms-admin-apk`. Customer Android
+builds ignore Admin-only changes, so an Admin build cannot accidentally package
+the public customer application. The Admin package ID is `com.montensms.admin`;
+the debug APK is intended for direct testing, not Google Play release signing.
+
 The private App Management page uploads `.apk` and `.aab` releases into the
 private `app-release-files` Storage bucket. Uploads are validated and saved as
 drafts; publishing requires an explicit confirmation and only updates the

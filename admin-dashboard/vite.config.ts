@@ -12,6 +12,7 @@ export default defineConfig(({ command, mode }) => {
     ...process.env,
   };
   const standalone = mode === "standalone";
+  const android = mode === "android";
 
   if (command === "build" && (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY)) {
     throw new Error("VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required to build the admin dashboard.");
@@ -20,10 +21,14 @@ export default defineConfig(({ command, mode }) => {
   return {
     root: adminRoot,
     envDir: projectRoot,
-    base: "/admin/monten500/",
+    base: android ? "./" : "/admin/monten500/",
     plugins: [react()],
     build: {
-      outDir: standalone ? resolve(projectRoot, "dist-admin") : resolve(projectRoot, "dist/admin/monten500"),
+      outDir: android
+        ? resolve(adminRoot, "dist-android")
+        : standalone
+          ? resolve(projectRoot, "dist-admin")
+          : resolve(projectRoot, "dist/admin/monten500"),
       emptyOutDir: true,
     },
   };
