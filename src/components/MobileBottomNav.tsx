@@ -7,7 +7,7 @@ import type { DashboardPage } from "./DashboardLayout";
 const items: { id: DashboardPage; label: string; icon: LucideIcon }[] = [
   { id: "email-otp", label: "Email Purchase", icon: Mail },
   { id: "buy-numbers", label: "Buy Number", icon: ShoppingBag },
-  { id: "fund-wallet", label: "Phone Wallet", icon: Wallet },
+  { id: "fund-wallet", label: "Funds Wallet", icon: Wallet },
   { id: "profile", label: "Profile", icon: User },
 ];
 
