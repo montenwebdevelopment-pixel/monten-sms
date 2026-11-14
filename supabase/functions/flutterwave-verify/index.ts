@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
       return errorResponse(500, "Payment gateway is not configured. Please contact support.");
     }
 
-    console.log(`[flutterwave-verify] verification requested tx=${transactionId} user=${userId}`);
+    console.log("[flutterwave-verify] verification requested");
 
     // Verify the transaction directly with Flutterwave. The wallet is NEVER
     // credited on the strength of the client saying the payment worked.
@@ -61,15 +61,14 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!verifyResp.ok) {
-      const errBody = await verifyResp.text();
-      console.error(`[flutterwave-verify] Flutterwave verify HTTP ${verifyResp.status} tx=${transactionId} body=${errBody}`);
+      console.error("[flutterwave-verify] Flutterwave verification request failed", verifyResp.status);
       return errorResponse(502, "Flutterwave verification failed");
     }
 
     const verifyData = await verifyResp.json();
 
     if (verifyData.status !== "success" || verifyData.data?.status !== "successful") {
-      console.error(`[flutterwave-verify] payment not successful tx=${transactionId} status=${verifyData.data?.status}`);
+      console.error("[flutterwave-verify] payment not successful");
       return errorResponse(400, "Payment was not successful");
     }
 
@@ -85,11 +84,11 @@ Deno.serve(async (req: Request) => {
     // authenticated caller's email — the one Flutterwave confirmed on charge.
     const verifiedEmail = String(verifyData.data.customer?.email ?? "").toLowerCase();
     if (!verifiedEmail || verifiedEmail !== userEmail.toLowerCase()) {
-      console.error(`[flutterwave-verify] customer email mismatch tx=${transactionId} ref=${verifiedTxRef} payer=${verifiedEmail} caller=${userEmail}`);
+      console.error("[flutterwave-verify] customer email mismatch");
       return errorResponse(403, "Transaction does not belong to this user");
     }
 
-    console.log(`[flutterwave-verify] transaction verified tx=${transactionId} ref=${verifiedTxRef} amount=${verifiedAmount} user=${userId}`);
+    console.log("[flutterwave-verify] transaction verified");
 
     // Record the deposit. Written with the service-role client: the browser has
     // no write grant on this table and the user id comes from the verified token.
@@ -102,7 +101,7 @@ Deno.serve(async (req: Request) => {
     }, { onConflict: "transaction_id" });
 
     if (pendingError) {
-      console.error(`[flutterwave-verify] failed to record pending deposit tx=${transactionId}: ${pendingError.message}`);
+      console.error("[flutterwave-verify] failed to record pending deposit", pendingError.code ?? "unknown");
       return errorResponse(500, "Failed to record transaction");
     }
 
@@ -118,7 +117,7 @@ Deno.serve(async (req: Request) => {
     });
 
     if (creditError || !creditedTxId) {
-      console.error(`[flutterwave-verify] credit_wallet failed tx=${transactionId} ref=${verifiedTxRef}: ${creditError?.message ?? "no credited transaction returned"}`);
+      console.error("[flutterwave-verify] credit_wallet failed", creditError?.code ?? "unknown");
       return errorResponse(500, "Failed to credit wallet");
     }
 
@@ -134,7 +133,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", userId)
       .maybeSingle();
 
-    console.log(`[flutterwave-verify] wallet credited tx=${transactionId} ref=${verifiedTxRef} amount=${verifiedAmount} user=${userId} credit_tx=${creditedTxId}`);
+    console.log("[flutterwave-verify] wallet credited");
 
     return jsonResponse({
       success: true,
@@ -144,7 +143,7 @@ Deno.serve(async (req: Request) => {
       message: "Payment verified and your wallet has been credited.",
     });
   } catch (err) {
-    console.error("[flutterwave-verify] Unhandled error:", err);
+    console.error("[flutterwave-verify] unhandled error", err instanceof Error ? err.name : "unknown");
     return errorResponse(500, "Internal server error");
   }
 });

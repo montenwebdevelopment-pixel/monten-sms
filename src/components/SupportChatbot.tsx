@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   MessageCircle, X, Send, Headphones, ChevronRight, Sparkles, Ticket, AlertCircle,
 } from "lucide-react";
@@ -33,16 +33,16 @@ const STORAGE_KEY = "monten_support_chat";
 const MAX_SAVED = 40;
 const MAX_TEXT_LENGTH = 1000;
 
-async function loadServerHistory(): Promise<ChatMessage[]> {
+async function loadServerHistory(expectedUserId: string): Promise<ChatMessage[]> {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) return [];
+    const activeSession = sessionData?.session;
+    if (!activeSession || activeSession.user.id !== expectedUserId) return [];
     const res = await fetch(`${EDGE_FUNCTION_BASE}/support-agent`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${activeSession.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ action: "history" }),
@@ -83,9 +83,9 @@ function isValidSavedMessage(value: unknown): value is ChatMessage {
   );
 }
 
-function loadSavedMessages(): ChatMessage[] {
+function loadSavedMessages(storageKey: string): ChatMessage[] {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -102,7 +102,7 @@ function loadSavedMessages(): ChatMessage[] {
   }
 }
 
-function saveMessages(messages: ChatMessage[]) {
+function saveMessages(messages: ChatMessage[], storageKey: string) {
   try {
     const trimmed = messages.slice(-MAX_SAVED).map((m) => ({
       id: m.id,
@@ -112,7 +112,7 @@ function saveMessages(messages: ChatMessage[]) {
       timestamp: m.timestamp,
       ticket: m.ticket,
     }));
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    sessionStorage.setItem(storageKey, JSON.stringify(trimmed));
   } catch {
     // ignore quota errors
   }
@@ -142,20 +142,20 @@ interface AgentResponse {
   actions_taken?: string[];
 }
 
-async function callSupportAgent(message: string, history: { role: "user" | "assistant"; text: string }[]): Promise<AgentResponse | null> {
+async function callSupportAgent(message: string, expectedUserId: string): Promise<AgentResponse | null> {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) return null;
+    const activeSession = sessionData?.session;
+    if (!activeSession || activeSession.user.id !== expectedUserId) return null;
 
     const res = await fetch(`${EDGE_FUNCTION_BASE}/support-agent`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${activeSession.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message }),
     });
 
     if (res.status === 401) return null;
@@ -178,6 +178,8 @@ async function callSupportAgent(message: string, history: { role: "user" | "assi
 export function SupportChatbot() {
   const { profile, session } = useAuth();
   const signedIn = Boolean(session?.user);
+  const userId = session?.user?.id ?? null;
+  const storageKey = `${STORAGE_KEY}:${userId ?? "guest"}`;
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -186,28 +188,27 @@ export function SupportChatbot() {
   const [showQuickReplies, setShowQuickReplies] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const initialized = useRef(false);
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    const saved = loadSavedMessages();
+    let active = true;
+    const saved = loadSavedMessages(storageKey);
     if (saved.length > 0) {
       setMessages(saved);
       setShowQuickReplies(false);
     } else {
       setMessages([makeGreeting(profile?.full_name, signedIn)]);
     }
-    if (signedIn) {
-      loadServerHistory().then((history) => {
-        if (history.length > 0) {
+    if (userId) {
+      loadServerHistory(userId).then((history) => {
+        if (active && history.length > 0) {
           setMessages(history);
           setShowQuickReplies(false);
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-MAX_SAVED)));
+          sessionStorage.setItem(storageKey, JSON.stringify(history.slice(-MAX_SAVED)));
         }
       });
     }
-  }, [profile?.full_name, signedIn]);
+    return () => { active = false; };
+  }, [storageKey, userId, profile?.full_name, signedIn]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -228,8 +229,8 @@ export function SupportChatbot() {
   }, [messages.length, open]);
 
   useEffect(() => {
-    if (messages.length > 0) saveMessages(messages);
-  }, [messages]);
+    if (messages.length > 0) saveMessages(messages, storageKey);
+  }, [messages, storageKey]);
 
   const addMessage = (msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
@@ -240,12 +241,6 @@ export function SupportChatbot() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
-
-  const conversationHistory = useCallback(
-    (): { role: "user" | "assistant"; text: string }[] =>
-      messages.slice(-12).map((m) => ({ role: m.role === "bot" ? "assistant" : "user", text: m.text })),
-    [messages]
-  );
 
   const handleSend = async (text: string) => {
     const trimmed = text.trim();
@@ -282,7 +277,7 @@ export function SupportChatbot() {
       return;
     }
 
-    const result = await callSupportAgent(trimmed, conversationHistory());
+    const result = userId ? await callSupportAgent(trimmed, userId) : null;
     setTyping(false);
 
     if (!result) {
@@ -349,9 +344,9 @@ export function SupportChatbot() {
 
     // Quick replies go through the agent when signed in, so they get
     // account-aware answers (e.g. "Balance" pulls the real balance).
-    if (signedIn) {
+    if (signedIn && userId) {
       setTyping(true);
-      callSupportAgent(entry.question, conversationHistory()).then((result) => {
+      callSupportAgent(entry.question, userId).then((result) => {
         setTyping(false);
         if (!result) {
           addMessage({
@@ -405,7 +400,7 @@ export function SupportChatbot() {
   const clearChat = () => {
     setMessages([makeGreeting(profile?.full_name, signedIn)]);
     setShowQuickReplies(true);
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(storageKey);
   };
 
   const formatTime = (ts: number) => {
@@ -485,7 +480,7 @@ export function SupportChatbot() {
       {!open && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 pl-4 pr-5 h-14 rounded-full bg-royal-600 hover:bg-royal-700 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
+          className="fixed bottom-20 right-5 z-50 flex items-center justify-center p-0 w-14 h-14 rounded-full bg-royal-600 hover:bg-royal-700 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
           aria-label="Open Support chat"
         >
           <div className="relative">
@@ -494,7 +489,6 @@ export function SupportChatbot() {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-error-500 rounded-full border-2 border-royal-600" />
             )}
           </div>
-          <span className="font-semibold text-sm whitespace-nowrap">Support</span>
           <span className="absolute inset-0 rounded-full bg-royal-600 animate-ping opacity-10 pointer-events-none" />
         </button>
       )}

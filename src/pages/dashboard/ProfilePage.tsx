@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   User, Mail, AtSign, Save, CircleCheck as CheckCircle, CircleAlert as AlertCircle,
-  Camera, Trash2, KeyRound, ShieldCheck, Smartphone, Copy, Check,
+  Camera, Trash2, KeyRound, ShieldCheck, Copy, Check,
   Clock, BadgeCheck, Sun, Moon, Monitor, ArrowRight,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -10,7 +10,6 @@ import { supabase } from "../../lib/supabase";
 import { formatNaira, formatDate } from "../../lib/format";
 import { Button, Card, Input, Spinner } from "../../components/ui";
 import { PageHeader } from "../../components/DashboardLayout";
-import { DownloadAppButton } from "../../components/DownloadAppButton";
 import { useTheme, type ThemeMode } from "../../lib/theme";
 
 const AVATAR_EXTENSIONS = ["jpg", "jpeg", "png", "webp"] as const;
@@ -374,12 +373,6 @@ export function ProfilePage() {
             </div>
           </Card>
 
-          {/* Mobile app */}
-          <Card className="p-6">
-            <h3 className="font-bold text-navy-900 mb-2 flex items-center gap-2"><Smartphone className="w-5 h-5 text-royal-600" /> Mobile App</h3>
-            <p className="text-sm text-slate-500 mb-4">Install MONTEN SMS as a real app on your phone. It runs on its own, outside the browser.</p>
-            <DownloadAppButton />
-          </Card>
         </div>
 
         <button

@@ -9,7 +9,11 @@ export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-navy-900 to-royal-600">
-        <span className="text-white font-bold text-lg">M</span>
+        <img
+          src="/icons/icon-128.png"
+          alt=""
+          className="h-full w-full rounded-lg object-cover"
+        />
       </div>
       <span className={`font-extrabold tracking-tight text-navy-900 ${sizes[size]}`}>
         MONTEN<span className="text-royal-600">SMS</span>

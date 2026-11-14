@@ -24,7 +24,7 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Configure optional Firebase Android client
         env:
@@ -165,9 +165,30 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
 
+      - name: Verify and package debug APK
+        run: |
+          set -euo pipefail
+          apk_path="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk_path"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk_path" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -Eq "^package: name='com\\.montensms\\.app' versionCode='[1-9][0-9]*' versionName='[^']+' " "$RUNNER_TEMP/apk-badging.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk_path"
+          mkdir -p artifacts
+          cp "$apk_path" artifacts/monten-sms-debug.apk
+          cp android/INSTALLATION.md artifacts/INSTALLATION.md
+          (cd artifacts && zip -q -j "$GITHUB_WORKSPACE/monten-sms-android-debug.zip" monten-sms-debug.apk INSTALLATION.md)
+          test -s monten-sms-android-debug.zip
+
       - name: Upload MONTEN SMS Android Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: MONTEN-SMS-Android-Debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: artifacts/monten-sms-debug.apk
+          if-no-files-found: error
+
+      - name: Upload APK and installation guide ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: MONTEN-SMS-Android-Debug-Package
+          path: monten-sms-android-debug.zip
           if-no-files-found: error

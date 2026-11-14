@@ -115,13 +115,13 @@ async function fetchDomainsStock(service?: string): Promise<Map<string, number>>
 async function fetchCatalog(): Promise<{ services: Map<string, TaskPrice>; totalStock: number } | null> {
   const resp = await fetch(`${MAILOTP_BASE}/v1/services`, { headers: providerHeaders() });
   if (!resp.ok) {
-    console.error("[mailotp-proxy] /v1/services failed:", resp.status, await resp.text().catch(() => ""));
+    console.error("[mailotp-proxy] /v1/services request failed", resp.status);
     return null;
   }
   const body = await resp.json().catch(() => null);
   const raw: any[] = Array.isArray(body) ? body : Array.isArray(body?.services) ? body.services : [];
   if (raw.length === 0) {
-    console.error("[mailotp-proxy] /v1/services returned no parseable list; head:", JSON.stringify(body)?.slice(0, 300));
+    console.error("[mailotp-proxy] /v1/services returned no parseable list");
   }
   const map = new Map<string, TaskPrice>();
   for (const s of raw) {
@@ -225,7 +225,7 @@ async function refundWallet(admin: any, userId: string, amount: number, referenc
     p_description: description,
   });
   if (error) {
-    console.error("[mailotp-proxy] wallet refund failed", error.message);
+    console.error("[mailotp-proxy] wallet refund failed", error.code ?? "unknown");
     throw new ProviderError("refund_failed", "The refund could not be completed yet. Please try again shortly.", 500);
   }
 }
@@ -641,7 +641,7 @@ Deno.serve(async (req: Request) => {
 
     return errorResponse(404, "Not found");
   } catch (err) {
-    console.error("[mailotp-proxy] Unhandled error:", err instanceof Error ? err.message : err);
+    console.error("[mailotp-proxy] unhandled error", err instanceof Error ? err.name : "unknown");
     if (err instanceof ProviderError) return errorResponse(err.status, err.message, err.code);
     return errorResponse(500, "Something went wrong. Please try again shortly.");
   }

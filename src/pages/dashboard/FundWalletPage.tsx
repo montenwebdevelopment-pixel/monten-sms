@@ -92,12 +92,9 @@ export function FundWalletPage() {
         customizations: { title: "MONTEN SMS", description: "Wallet Funding" },
         callback: async (data: any) => {
           clearTimeoutTimer();
-          // Log the full gateway response so any parameter errors are easy
-          // to diagnose. The customer never sees this object.
-          console.log("[fund-wallet] Flutterwave callback response:", data);
           const txId = data.transaction_id;
           if (!txId || data.status === "error" || data.status === "failed") {
-            console.error("[fund-wallet] payment rejected by gateway", data);
+            console.error("[fund-wallet] payment rejected by gateway");
             setError("Payment was rejected by the gateway. Please contact support if you were charged.");
             setLoading(false);
             return;
@@ -114,9 +111,7 @@ export function FundWalletPage() {
             });
             const verifyData = await verifyResp.json();
             if (!verifyResp.ok) {
-              // Backend detail stays in the console; the customer gets a fixed
-              // sentence so no internal failure structure is published.
-              console.error("[fund-wallet] verification rejected", verifyResp.status, verifyData?.error);
+              console.error("[fund-wallet] verification rejected", verifyResp.status);
               setError("We couldn't verify this payment. If you were charged, please contact support with your payment reference.");
               setLoading(false);
               return;

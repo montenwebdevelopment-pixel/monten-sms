@@ -72,32 +72,23 @@ function emailShell(title: string, intro: string, body: string, footer: string):
 </table></td></tr></table></body></html>`;
 }
 
-function maskEmail(email: string): string {
-  const [local, domain] = email.split("@");
-  if (!domain) return "[invalid]";
-  const masked = local.length <= 2 ? local[0] + "***" : local[0] + "***" + local.slice(-1);
-  return `${masked}@${domain}`;
-}
-
 async function sendEmail(to: string, subject: string, html: string, text: string, action: string): Promise<void> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) {
-    console.error(`[send-otp] action=${action} RESEND_API_KEY is not configured`);
+    console.error("[send-otp] email provider is not configured");
     throw new EmailSendError("Email service is not configured.");
   }
-  console.log(`[send-otp] action=${action} from=${FROM_ADDRESS} to=${maskEmail(to)} subject="${subject}" — sending to Resend`);
+  console.log(`[send-otp] sending ${action} email`);
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: FROM_ADDRESS, to: [to], subject, html, text }),
   });
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    console.error(`[send-otp] action=${action} to=${maskEmail(to)} Resend REJECTED status=${res.status} name=${errBody?.name ?? ""} message=${errBody?.message ?? ""}`);
+    console.error(`[send-otp] email provider rejected ${action} email`, res.status);
     throw new EmailSendError("Email provider rejected the message.");
   }
-  const body = await res.json().catch(() => ({}));
-  console.log(`[send-otp] action=${action} to=${maskEmail(to)} Resend ACCEPTED id=${body?.id ?? "unknown"} subject="${subject}"`);
+  console.log(`[send-otp] email provider accepted ${action} email`);
 }
 
 async function findUserId(email: string): Promise<string | null> {
@@ -172,7 +163,7 @@ async function handleRegister(body: Record<string, unknown>) {
   });
   if (first.error) {
     const msg = first.error.message.toLowerCase();
-    console.error(`[send-otp] createUser failed for ${maskEmail(email)}: ${first.error.message} (code=${first.error.code ?? "?"})`);
+    console.error("[send-otp] account creation failed", first.error.code ?? "unknown");
     if (msg.includes("already")) return fail(409, "An account with this email already exists. Please sign in instead.", "exists");
     if (msg.includes("password")) return fail(400, "That password appears in public breach lists, so it isn't allowed while leak protection is enabled. Please pick a less common password.", "weak_password");
     return fail(500, "We couldn't create your account. Please try again.");
@@ -182,7 +173,7 @@ async function handleRegister(body: Record<string, unknown>) {
     const userId = first.data.user.id;
     await supabase.from("consent_records").insert({ user_id: userId, email, user_agent: String(body.userAgent ?? "").slice(0, 300) });
   } catch (consentErr) {
-    console.error("[send-otp] Consent record failed (account still created):", consentErr instanceof Error ? consentErr.message : consentErr);
+    console.error("[send-otp] consent record failed", consentErr instanceof Error ? consentErr.name : "unknown");
   }
 
   try {
@@ -242,7 +233,7 @@ async function handleVerify(email: string, code: unknown) {
   await supabase.from("email_otps").update({ verified: true }).eq("id", record.id);
   const { error: confirmError } = await supabase.auth.admin.updateUserById(userId, { email_confirm: true });
   if (confirmError) {
-    console.error("[send-otp] Confirming email failed:", confirmError.message);
+    console.error("[send-otp] email confirmation failed", confirmError.code ?? "unknown");
     return fail(500, "We couldn't complete verification. Please try again.");
   }
   await supabase.from("profiles").update({ email_verified: true }).eq("id", userId);
@@ -266,7 +257,7 @@ async function handleReset(email: string) {
   const { data, error } = await supabase.auth.admin.generateLink({ type: "recovery", email });
   const tokenHash = data?.properties?.hashed_token;
   if (error || !tokenHash) {
-    console.error("[send-otp] Generating reset link failed:", error?.message ?? "no token");
+    console.error("[send-otp] password reset link generation failed", error?.code ?? "unknown");
     return fail(500, "We couldn't send the reset email right now. Please try again shortly.");
   }
   const link = `${SITE_URL}/update-password?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`;
@@ -308,7 +299,7 @@ Deno.serve(async (req: Request) => {
     if (action === "reset") return await handleReset(email);
     return fail(400, "Invalid action.");
   } catch (err) {
-    console.error(`[send-otp] Unhandled error action=${String(body?.action ?? "?")}:`, err instanceof Error ? err.message : "unknown");
+    console.error("[send-otp] unhandled error", err instanceof Error ? err.name : "unknown");
     return fail(500, "Something went wrong. Please try again shortly.");
   }
 });

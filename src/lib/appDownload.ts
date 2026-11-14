@@ -11,13 +11,11 @@ export function detectPlatform(): Platform {
   return "other";
 }
 
-export async function handleAppDownload(): Promise<{ ok: boolean; message: string }> {
+export async function handleAppDownload(): Promise<{ ok: boolean }> {
   const platform = detectPlatform();
 
-  if (platform === "ios") {
-    return { ok: false, message: "iPhone App Coming Soon" };
-  }
+  if (platform === "ios") return { ok: false };
 
   window.location.href = APK_DOWNLOAD_URL;
-  return { ok: true, message: "Download started" };
+  return { ok: true };
 }

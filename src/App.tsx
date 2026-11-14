@@ -113,6 +113,8 @@ function AuthFlow() {
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { session, profile, loading } = useAuth();
+  const nativeApp = isNativeApp();
   usePushNotifications();
 
   useEffect(() => {
@@ -129,6 +131,23 @@ function AppRoutes() {
     };
   }, [location.pathname, navigate]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Spinner className="w-8 h-8 text-royal-600" />
+      </div>
+    );
+  }
+
+  const publicAuthRoute = location.pathname === "/login" || location.pathname === "/register";
+  if (session && (publicAuthRoute || (nativeApp && location.pathname === "/"))) {
+    return <Navigate to={profile && !profile.email_verified ? "/verify-otp" : "/dashboard/dashboard"} replace />;
+  }
+
+  if (!session && nativeApp && location.pathname === "/") {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
     <>
       <Routes>
@@ -143,7 +162,7 @@ function AppRoutes() {
         <Route path="/dashboard/*" element={<AuthGate><DashboardRouter /></AuthGate>} />
       </Routes>
       <AuthFlow />
-      <SupportChatbot />
+      <SupportChatbot key={session?.user?.id ?? "guest"} />
     </>
   );
 }

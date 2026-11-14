@@ -1,18 +1,16 @@
 import { useState, useEffect, ReactNode, createContext, useContext } from "react";
 import {
   Menu, X, Wallet, Bell, User, LifeBuoy, LayoutDashboard, ShoppingBag,
-  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw, Mail,
+  CreditCard, History, Smartphone, LogOut, Megaphone, Send, Music, RefreshCw, Mail, Code2,
   Sun, Moon, Monitor,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { formatNaira, timeAgo } from "../lib/format";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { isNativeApp } from "../lib/native";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import { Logo } from "./ui";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { DownloadAppButton } from "./DownloadAppButton";
 import type { Notification } from "../types";
 
 export type DashboardPage =
@@ -34,6 +32,7 @@ const navItems: NavItem[] = [
   { id: "transactions", label: "Transaction History", icon: <History className="w-5 h-5" /> },
   { id: "purchased-numbers", label: "Purchased Numbers", icon: <Smartphone className="w-5 h-5" /> },
   { id: "notifications", label: "Notifications", icon: <Bell className="w-5 h-5" /> },
+  { id: "developer", label: "Developer", icon: <Code2 className="w-5 h-5" /> },
   { id: "profile", label: "PROFILE", icon: <User className="w-5 h-5" /> },
   { id: "support", label: "Customer Support", icon: <LifeBuoy className="w-5 h-5" /> },
 ];
@@ -67,9 +66,6 @@ export function DashboardLayout({
 }) {
   const { profile, signOut, refreshProfile } = useAuth();
   const { mode: themeMode, setTheme } = useTheme();
-  // The Android/iOS app keeps its original dashboard chrome: no "Get the App"
-  // sidebar block, since the visitor is already inside the app.
-  const native = isNativeApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -149,15 +145,6 @@ export function DashboardLayout({
               )}
             </button>
           ))}
-
-          {!native && (
-            <div className="pt-3 mt-3 border-t border-navy-700">
-              <p className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Get the App</p>
-              <div className="px-3 py-1">
-                <DownloadAppButton className="w-full [&>button]:w-full [&>button]:justify-center [&>p]:text-slate-400 [&>p]:mt-1.5 [&>p]:ml-1" />
-              </div>
-            </div>
-          )}
 
           <div className="pt-3 mt-3 border-t border-navy-700">
             <p className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Our Channels</p>

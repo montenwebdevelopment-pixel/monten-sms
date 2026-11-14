@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Wallet, ShoppingBag, Mail, CreditCard, History, ArrowRight,
-  ArrowDownLeft, RefreshCw, TrendingDown,
+  ArrowDownLeft, RefreshCw, TrendingDown, Code2,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
@@ -97,6 +97,23 @@ export function DashboardHome({ onNavigate }: { onNavigate: (page: DashboardPage
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => onNavigate("developer")}
+        className="group w-full flex items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-royal-700 to-navy-800 p-4 sm:p-5 mb-6 text-left text-white card-shadow hover:card-shadow-lg active:scale-[0.99] transition-base"
+      >
+        <span className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15">
+            <Code2 className="h-6 w-6" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-bold">Become a Developer</span>
+            <span className="mt-0.5 block text-sm text-white/75">Build with the MONTEN SMS API</span>
+          </span>
+        </span>
+        <ArrowRight className="h-5 w-5 flex-shrink-0 transition-transform group-hover:translate-x-1" />
+      </button>
 
       {/* Seven-day spending summary — compact single-line card */}
       <Card className="p-4 mb-6">

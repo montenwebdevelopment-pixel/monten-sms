@@ -1,20 +1,14 @@
 import { useNavigate, Link } from "react-router-dom";
 import {
-  Shield, Zap, Globe, Smartphone, ArrowRight, Check, Send, Megaphone, Music,
-  Lock, Clock, TrendingUp, Apple
+  Shield, Zap, Globe, Smartphone, ArrowRight, Check, Send, Megaphone, Music, LogIn,
+  Lock, Clock, TrendingUp,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { detectPlatform, handleAppDownload, APK_DOWNLOAD_URL } from "../lib/appDownload";
 import { Logo } from "../components/ui";
 
 export function LandingPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
-  const platform = detectPlatform();
-
-  const handleDownload = async () => {
-    await handleAppDownload();
-  };
 
   const features = [
     { icon: <Globe className="w-6 h-6" />, title: "190+ Countries", description: "Access temporary phone numbers from over 190 countries worldwide." },
@@ -41,17 +35,22 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Logo size="md" />
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-1">
+          <div className="[&>div>span]:text-lg sm:[&>div>span]:text-2xl">
+            <Logo size="md" />
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {session ? (
-              <button onClick={() => navigate("/dashboard")} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-royal-600 text-white text-sm font-semibold hover:bg-royal-700 transition-colors">
+              <button onClick={() => navigate("/dashboard")} className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg bg-royal-600 text-white text-xs sm:text-sm font-semibold hover:bg-royal-700 transition-colors">
                 Dashboard <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <>
-                <button onClick={() => navigate("/login")} className="text-sm font-semibold text-navy-900 hover:text-royal-600 transition-colors px-3 py-2">Sign in</button>
-                <button onClick={() => navigate("/register")} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-royal-600 text-white text-sm font-semibold hover:bg-royal-700 transition-colors">
+                <button onClick={() => navigate("/login")} aria-label="Sign in" className="inline-flex items-center justify-center text-sm font-semibold text-navy-900 hover:text-royal-600 transition-colors px-2 sm:px-3 py-2">
+                  <LogIn className="w-4 h-4 sm:hidden" />
+                  <span className="hidden sm:inline">Sign in</span>
+                </button>
+                <button onClick={() => navigate("/register")} className="inline-flex items-center gap-1 px-3 sm:px-4 py-2 rounded-lg bg-royal-600 text-white text-xs sm:text-sm font-semibold hover:bg-royal-700 transition-colors">
                   Get Started <ArrowRight className="w-4 h-4" />
                 </button>
               </>
@@ -76,15 +75,6 @@ export function LandingPage() {
             Buy temporary phone numbers from 190+ countries and receive SMS verification codes instantly. WhatsApp, Telegram, Gmail, TikTok and 700+ more services.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            {platform === "ios" ? (
-              <div className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 opacity-70 cursor-not-allowed" title="iPhone App Coming Soon">
-                <Apple className="w-5 h-5" /> iPhone App Coming Soon
-              </div>
-            ) : (
-              <button onClick={handleDownload} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-navy-900 font-bold hover:bg-slate-100 transition-all hover:scale-105 shadow-lg">
-                <Smartphone className="w-5 h-5 text-success-600" /> Download for Android
-              </button>
-            )}
             <button onClick={() => navigate("/register")} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-royal-600 text-white font-semibold hover:bg-royal-700 transition-all hover:scale-105 shadow-lg">
               Start Verifying <ArrowRight className="w-5 h-5" />
             </button>
@@ -137,46 +127,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="py-20 px-4 sm:px-6 bg-slate-50">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-navy-900 mb-3">Get the App</h2>
-          <p className="text-slate-500 mb-8 max-w-xl mx-auto">Install MONTEN SMS on your phone and receive OTP codes in a real app &mdash; no browser needed. Sign in with your MONTEN SMS account after installing.</p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            {platform === "ios" ? (
-              <div className="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl bg-white border border-slate-200 text-navy-900 font-bold shadow-lg opacity-60 cursor-not-allowed" title="iPhone App Coming Soon">
-                <Apple className="w-6 h-6 text-navy-900" />
-                <span className="text-left leading-tight">
-                  <span className="block text-[10px] font-medium text-slate-500 uppercase tracking-wide">Download for</span>
-                  <span className="block text-base">iPhone</span>
-                </span>
-              </div>
-            ) : (
-              <a
-                href={APK_DOWNLOAD_URL}
-                onClick={(e) => { e.preventDefault(); void handleDownload(); }}
-                className="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl bg-navy-900 text-white font-bold hover:bg-navy-800 transition-all hover:scale-105 shadow-lg"
-              >
-                <Smartphone className="w-6 h-6 text-success-400" />
-                <span className="text-left leading-tight">
-                  <span className="block text-[10px] font-medium text-slate-300 uppercase tracking-wide">Download for</span>
-                  <span className="block text-base">Android</span>
-                </span>
-              </a>
-            )}
-            {platform === "other" && (
-              <div className="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl bg-white border border-slate-200 text-navy-900 font-bold shadow-lg opacity-60 cursor-not-allowed" title="iPhone App Coming Soon">
-                <Apple className="w-6 h-6 text-navy-900" />
-                <span className="text-left leading-tight">
-                  <span className="block text-[10px] font-medium text-slate-500 uppercase tracking-wide">Download for</span>
-                  <span className="block text-base">iPhone</span>
-                </span>
-              </div>
-            )}
-          </div>
-          <p className="mt-4 text-xs text-slate-400">The APK installs as a normal Android app. On first launch after install, tap Install when your phone asks to allow installs from your browser.</p>
-        </div>
-      </section>
-
       <section className="py-20 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto text-center">
           <div className="bg-gradient-to-br from-navy-900 to-royal-800 rounded-3xl p-10 sm:p-14">
@@ -202,12 +152,6 @@ export function LandingPage() {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-navy-800 text-center text-sm">
-            {platform !== "ios" && (
-              <a href={APK_DOWNLOAD_URL} onClick={(e) => { e.preventDefault(); void handleDownload(); }} className="inline-flex items-center gap-1.5 text-royal-400 hover:text-royal-300 font-medium">
-                <Smartphone className="w-4 h-4" /> Download for Android
-              </a>
-            )}
-            {platform === "ios" && <span className="text-slate-400">iPhone App Coming Soon</span>}
             <p className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <Link to="/privacy" className="hover:text-slate-200 transition-colors">Privacy Policy</Link>
               <Link to="/delete-account" className="hover:text-slate-200 transition-colors">Delete Account</Link>

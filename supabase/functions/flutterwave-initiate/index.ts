@@ -107,20 +107,13 @@ Deno.serve(async (req: Request) => {
     const initiateData = await initiateResp.json();
 
     if (!initiateResp.ok || initiateData.status !== "success" || !initiateData.data?.link) {
-      // Log the full error response so parameter errors are easy to diagnose.
-      console.error("[flutterwave-initiate] gateway rejected request", {
-        status: initiateResp.status,
-        body: initiateData,
-        txRef,
-        amount: cleanAmount,
-        customerEmail: userEmail,
-      });
-      return errorResponse(initiateResp.status, initiateData.message || "Failed to create payment link");
+      console.error("[flutterwave-initiate] gateway rejected request", initiateResp.status);
+      return errorResponse(initiateResp.status, "Failed to create payment link. Please try again.");
     }
 
     return jsonResponse({ payment_link: initiateData.data.link, tx_ref: txRef });
   } catch (err) {
-    console.error("[flutterwave-initiate] Error:", err);
+    console.error("[flutterwave-initiate] unhandled error", err instanceof Error ? err.name : "unknown");
     return errorResponse(500, "Internal server error");
   }
 });

@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existing?.status === "credited") {
-      console.log(`[flutterwave-webhook] duplicate transaction, already credited tx=${transactionId}`);
+      console.log("[flutterwave-webhook] duplicate transaction already credited");
       return jsonResponse({ status: "duplicate", reason: "already credited" });
     }
 
@@ -86,15 +86,14 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!verifyResp.ok) {
-      const errBody = await verifyResp.text();
-      console.error(`[flutterwave-webhook] Verify failed: HTTP ${verifyResp.status} tx=${transactionId} body=${errBody}`);
+      console.error("[flutterwave-webhook] verification request failed", verifyResp.status);
       return jsonResponse({ status: "acknowledged", reason: "verification failed" }, 200);
     }
 
     const verifyData = await verifyResp.json();
 
     if (verifyData.status !== "success" || verifyData.data.status !== "successful") {
-      console.error(`[flutterwave-webhook] failed verification, payment not confirmed by API tx=${transactionId}`);
+      console.error("[flutterwave-webhook] payment not confirmed by API");
       return jsonResponse({ status: "ignored", reason: "payment not confirmed by API" });
     }
 
@@ -103,10 +102,10 @@ Deno.serve(async (req: Request) => {
     const verifiedTxRef = String(verifyData.data.tx_ref || txRef || "");
     const verifiedEmail = verifyData.data.customer?.email ?? customerEmail;
 
-    console.log(`[flutterwave-webhook] transaction verified tx=${transactionId} ref=${verifiedTxRef} amount=${verifiedAmount}`);
+    console.log("[flutterwave-webhook] transaction verified");
 
     if (currency !== "NGN") {
-      console.error(`[flutterwave-webhook] refusing unsupported currency tx=${transactionId} currency=${currency}`);
+      console.error("[flutterwave-webhook] refusing unsupported currency");
       return jsonResponse({ status: "ignored", reason: "unsupported currency" });
     }
 
@@ -131,11 +130,11 @@ Deno.serve(async (req: Request) => {
         .eq("tx_ref", verifiedTxRef)
         .limit(2);
       if (pendingLookupError) {
-        console.error("[flutterwave-webhook] pending_deposits lookup failed:", pendingLookupError.message);
+        console.error("[flutterwave-webhook] pending_deposits lookup failed", pendingLookupError.code ?? "unknown");
       } else if (pendingRows && pendingRows.length === 1 && pendingRows[0].user_id) {
         userId = pendingRows[0].user_id as string;
       } else if (pendingRows && pendingRows.length > 1) {
-        console.error("[flutterwave-webhook] Ambiguous tx_ref, refusing to guess a wallet:", verifiedTxRef);
+        console.error("[flutterwave-webhook] ambiguous transaction reference; refusing to guess a wallet");
         return jsonResponse({ status: "ignored", reason: "ambiguous reference" });
       }
     }
@@ -149,7 +148,7 @@ Deno.serve(async (req: Request) => {
         { p_email: verifiedEmail }
       );
       if (resolveError) {
-        console.error("[flutterwave-webhook] Email resolve failed:", resolveError.message);
+        console.error("[flutterwave-webhook] email resolve failed", resolveError.code ?? "unknown");
       } else if (resolvedId) {
         userId = resolvedId as string;
       }
@@ -160,11 +159,11 @@ Deno.serve(async (req: Request) => {
     //    The email-resolution path above is the fallback when no pending row exists.
 
     if (!userId) {
-      console.error("[flutterwave-webhook] Could not identify user for tx:", transactionId, "email:", verifiedEmail, "tx_ref:", verifiedTxRef);
+      console.error("[flutterwave-webhook] could not identify payment owner");
       return jsonResponse({ status: "ignored", reason: "user not identified" });
     }
 
-    console.log(`[flutterwave-webhook] user matched tx=${transactionId} user=${userId}`);
+    console.log("[flutterwave-webhook] payment owner identified");
 
     // 6. Create or update webhook_deposits row (dedup via unique flw_transaction_id)
     const { error: upsertErr } = await supabase
@@ -181,7 +180,7 @@ Deno.serve(async (req: Request) => {
       }, { onConflict: "flw_transaction_id" });
 
     if (upsertErr) {
-      console.error("[flutterwave-webhook] Upsert failed:", upsertErr.message);
+      console.error("[flutterwave-webhook] deposit record failed", upsertErr.code ?? "unknown");
       return jsonResponse({ status: "acknowledged", reason: "record failed" }, 200);
     }
 
@@ -198,7 +197,7 @@ Deno.serve(async (req: Request) => {
     });
 
     if (rpcErr || !creditedTxId) {
-      console.error("[flutterwave-webhook] credit_wallet failed:", rpcErr?.message ?? "no credited transaction returned");
+      console.error("[flutterwave-webhook] credit_wallet failed", rpcErr?.code ?? "unknown");
       await supabase
         .from("webhook_deposits")
         .update({ status: "failed", updated_at: new Date().toISOString() })
@@ -224,11 +223,11 @@ Deno.serve(async (req: Request) => {
         .eq("tx_ref", verifiedTxRef);
     }
 
-    console.log(`[flutterwave-webhook] wallet credited tx=${transactionId} ref=${verifiedTxRef} amount=${verifiedAmount} user=${userId} credit_tx=${creditedTxId}`);
+    console.log("[flutterwave-webhook] wallet credited");
 
-    return jsonResponse({ status: "success", tx_ref: verifiedTxRef, amount: verifiedAmount, user_id: userId });
+    return jsonResponse({ status: "success" });
   } catch (err) {
-    console.error("[flutterwave-webhook] Unhandled error:", err);
+    console.error("[flutterwave-webhook] unhandled error", err instanceof Error ? err.name : "unknown");
     return jsonResponse({ status: "acknowledged", reason: "internal error" }, 200);
   }
 });
